@@ -1,14 +1,9 @@
-# pyproject.toml [tool.poetry.dependencies] 와 동일한 버전 정책(앱·Streamlit 실행에 필요한 항목만 선별).
-# Python: pyproject와 같이 >=3.11,<3.13 권장.
-
-# UI
+# UI 및 기본 설정
 streamlit>=1.0,<2
-
-# 설정
 python-dotenv>=1.0,<2
 pydantic>=2.0,<3
 
-# LangChain / LangGraph (pyproject: langchain-* = "0.*", langgraph = "0.*")
+# LangChain / LangGraph (호환성 확보를 위해 하한선만 유지)
 langgraph>=0.2.0,<1.0.0
 langchain-core>=0.3.0,<1.0.0
 langchain-community>=0.3.0,<1.0.0
@@ -16,30 +11,22 @@ langchain-openai>=0.2.0,<1.0.0
 langchain-text-splitters>=0.3.0,<1.0.0
 langchain-huggingface>=0.0.3,<1.0.0
 
-# LLM API
+# LLM API 및 검색
 openai>=1.0,<2
-
-# RAGAS (pyproject: ragas = "0.*")
-ragas>=0.2.0,<1.0.0
-
-# 벡터 검색·임베딩 (pyproject: faiss-cpu = "1.*", sentence-transformers = "3.*")
-faiss-cpu>=1.8,<2
-sentence-transformers>=3.0,<4
-numpy>=1.26.4,<2
-scikit-learn>=1.3,<2
-
-# Hub / 토큰 (pyproject: huggingface-hub = "0.*", tiktoken = "0.*")
-huggingface-hub>=0.20.0,<1.0.0
-tiktoken>=0.7.0,<1.0.0
-
-# PDF (pyproject: pypdf = "4.*" — PyPDFDirectoryLoader/PyPDFLoader 연동)
-pypdf>=4.0,<5
-
-# 웹 검색 (pyproject: duckduckgo-search = ">=6.0")
 duckduckgo-search>=6.0
-
-# 재시도 등 (pyproject: tenacity = "8.*")
 tenacity>=8.0,<9
 
-# pyproject: torch = "2.2.0" — sentence-transformers 학습·임베딩 시 필요
-torch==2.2.0
+# RAG / 벡터 검색 (버전 범위를 넓혀 충돌 방지)
+ragas>=0.2.0,<1.0.0
+faiss-cpu>=1.8,<2
+sentence-transformers>=3.0,<4
+scikit-learn>=1.3,<2
+huggingface-hub>=0.20.0,<1.0.0
+tiktoken>=0.7.0,<1.0.0
+pypdf>=4.0,<5
+
+# [핵심 수정] 버전 고정 해제 및 호환성 확보
+# torch==2.2.0은 최신 서버 환경과 충돌하므로 최소 버전만 지정합니다.
+torch>=2.2.0
+# numpy 역시 특정 범위를 지정하기보다 최신 라이브러리들이 정하는 버전을 따르도록 합니다.
+numpy
