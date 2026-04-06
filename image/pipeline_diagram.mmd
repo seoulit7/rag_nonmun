@@ -1,0 +1,79 @@
+---
+config:
+  layout: fixed
+---
+flowchart TB
+ subgraph T0["🗄️  Tier 0 · VectorDB · 최대 3회 재시도"]
+    direction LR
+        QR0["query_rewriter\n최적화 loop=0"]
+        RE0["rag_engine\nLangGraph node"]
+        RA0["_call_retrieval_tool\ntool_choice=req"]
+        VDB[("search_vector_db\nFAISS TOP_K")]
+        GA0["LLM 답변합성\ncontext + Q"]
+        CR0{"critic_agent\nF · AR · CP"}
+        QRF["query_rewriter\nrefinement"]
+  end
+ subgraph T1["🧠  Tier 1 · LLM 학습데이터 · 1회  (외부 도구 없음)"]
+    direction LR
+        QR1["query_rewriter\nrefinement"]
+        RE1["rag_engine\nLangGraph node"]
+        LLM["_search_llm_knowledge\nLLM 직접생성"]
+        CR1{"critic_agent\nF · AR · CP"}
+  end
+ subgraph T2["🌐  Tier 2 · 웹검색 · 1회  (DuckDuckGo)"]
+    direction LR
+        QR2["query_rewriter\nrefinement"]
+        RE2["rag_engine\nLangGraph node"]
+        RA2["_call_retrieval_tool\ntool_choice=req"]
+        WEB[("search_web\nDuckDuckGo")]
+        GA2["LLM 답변합성\ncontext + Q"]
+        CR2{"critic_agent\nF · AR · CP"}
+  end
+    A(["START"]) --> LC["level_classifier\nProf / Consumer"]
+    LC --> QR0
+    QR0 --> RE0
+    RE0 --> RA0
+    RA0 -- query --> VDB
+    VDB -. chunks .-> GA0
+    GA0 --> CR0
+    CR0 -- "F<0.8  attempt<3\nnot critical  loop+1" --> QRF
+    QRF --> RE0
+    CR0 -- "F ≥ 0.8" --> OUT["output_agent\n한국어번역 · 출처"]
+    CR0 -- "즉시: AR<0.3  OR  F<0.3+CP<0.2\n소진: attempt == 3" --> QR1
+    QR1 --> RE1
+    RE1 --> LLM
+    LLM --> CR1
+    CR1 -- "F ≥ 0.8" --> OUT
+    CR1 -- "F < 0.8" --> QR2
+    QR2 --> RE2
+    RE2 --> RA2
+    RA2 -- query --> WEB
+    WEB -. chunks .-> GA2
+    GA2 --> CR2
+    CR2 -- "F ≥ 0.8" --> OUT
+    CR2 -- 모든 Tier 소진 --> FB["fallback\n원문 제시"]
+    FB --> OUT
+    OUT --> Z(["END"])
+
+    style QR0 fill:#6D4C41,color:#fff,stroke:#4E342E
+    style RE0 fill:#F57F17,color:#fff,stroke:#E65100
+    style RA0 fill:#1565C0,color:#fff,stroke:#0D47A1
+    style VDB fill:#BBDEFB,color:#0D47A1,stroke:#1565C0
+    style GA0 fill:#0D47A1,color:#fff,stroke:#01579B
+    style CR0 fill:#BF360C,color:#fff,stroke:#E64A19
+    style QRF fill:#6D4C41,color:#fff,stroke:#4E342E
+    style QR1 fill:#6D4C41,color:#fff,stroke:#4E342E
+    style RE1 fill:#F57F17,color:#fff,stroke:#E65100
+    style LLM fill:#4A148C,color:#fff,stroke:#6A1B9A
+    style CR1 fill:#BF360C,color:#fff,stroke:#E64A19
+    style QR2 fill:#6D4C41,color:#fff,stroke:#4E342E
+    style RE2 fill:#F57F17,color:#fff,stroke:#E65100
+    style RA2 fill:#00695C,color:#fff,stroke:#004D40
+    style WEB fill:#B2DFDB,color:#004D40,stroke:#00695C
+    style GA2 fill:#004D40,color:#fff,stroke:#00695C
+    style CR2 fill:#BF360C,color:#fff,stroke:#E64A19
+    style A   fill:#388E3C,color:#fff,stroke:#2E7D32
+    style LC  fill:#546E7A,color:#fff,stroke:#37474F
+    style OUT fill:#2E7D32,color:#fff,stroke:#388E3C
+    style FB  fill:#B71C1C,color:#fff,stroke:#C62828
+    style Z   fill:#C62828,color:#fff,stroke:#B71C1C
