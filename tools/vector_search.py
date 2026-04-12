@@ -72,8 +72,14 @@ def initialize_vector_db(
 
                 if new_docs:
                     new_index = build_faiss_db(new_docs)
-                    _db.merge_from(new_index)
-                    save_faiss_db(_db, index_path)
+                    try:
+                        _db.merge_from(new_index)
+                        save_faiss_db(_db, index_path)
+                    except Exception:
+                        # 차원 불일치 등으로 merge 실패 시 전체 재빌드
+                        all_docs = load_and_split_pdfs(data_folder)
+                        _db = build_faiss_db(all_docs)
+                        save_faiss_db(_db, index_path)
         return
 
     docs = load_and_split_pdfs(data_folder)
