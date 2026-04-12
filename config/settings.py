@@ -15,21 +15,21 @@ load_dotenv(_ENV_FILE)
 if not (os.environ.get("OPENAI_API_KEY") or "").strip():
     load_dotenv(_ENV_FILE, override=True)
 
+# Streamlit Cloud Secrets → os.environ 주입
+# st.secrets는 모듈 import 시점에도 접근 가능하며,
+# os.environ에 없는 키만 주입하여 로컬 .env 값을 덮어쓰지 않는다.
+try:
+    import streamlit as st
+    for _k, _v in st.secrets.items():
+        if isinstance(_v, str) and _k not in os.environ:
+            os.environ[_k] = _v
+except Exception:
+    pass
+
 
 def _env(key: str, default: str = "") -> str:
-    # 1순위: os.environ (로컬 .env 또는 시스템 환경변수)
     v = os.environ.get(key)
-    if v is not None:
-        return v.strip()
-    # 2순위: Streamlit Cloud Secrets (st.secrets)
-    try:
-        import streamlit as st
-        v = st.secrets.get(key)
-        if v is not None:
-            return str(v).strip()
-    except Exception:
-        pass
-    return default
+    return (v if v is not None else default).strip()
 
 
 def _parsed_openai_api_key_from_file(path: Path) -> str:
