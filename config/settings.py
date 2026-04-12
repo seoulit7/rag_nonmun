@@ -17,8 +17,19 @@ if not (os.environ.get("OPENAI_API_KEY") or "").strip():
 
 
 def _env(key: str, default: str = "") -> str:
+    # 1순위: os.environ (로컬 .env 또는 시스템 환경변수)
     v = os.environ.get(key)
-    return (v if v is not None else default).strip()
+    if v is not None:
+        return v.strip()
+    # 2순위: Streamlit Cloud Secrets (st.secrets)
+    try:
+        import streamlit as st
+        v = st.secrets.get(key)
+        if v is not None:
+            return str(v).strip()
+    except Exception:
+        pass
+    return default
 
 
 def _parsed_openai_api_key_from_file(path: Path) -> str:
