@@ -1,3 +1,5 @@
+import time
+import uuid
 from typing import Callable, Literal, Optional
 
 from langgraph.graph import StateGraph, END
@@ -12,6 +14,7 @@ from agents.rag_engine import rag_engine
 from agents.critic import critic_agent, check_faithfulness, is_critically_low
 from agents.output import output_agent
 from core.llm_client import set_llm_provider, reset_llm_provider
+from infra.audit_logger import save_audit_log, update_audit_log_answer
 
 
 # ── 노드 이름 → step_callback 이름 매핑 ─────────────────────────────────────
@@ -38,21 +41,26 @@ def _critic_node(
     - Tier 1 기준 미달 → query_rewriter (search_tier=2)
     - Tier 2 기준 미달 → fallback
     """
+    _t0 = time.perf_counter()
     state = critic_agent(state)
+    execution_time_ms = int((time.perf_counter() - _t0) * 1000)
 
-    if check_faithfulness(state):
-        return Command(update=dict(state), goto="output")
-
+    request_id = state.get("request_id", "")
     tier = state["search_tier"]
     loop = state["loop_count"]
     ar = state.get("answer_relevance_score", 0.0)
     f = state.get("critic_score", 0.0)
     cp = state.get("context_precision_score", 0.0)
 
+    if check_faithfulness(state):
+        save_audit_log(state, request_id, is_escalated=False, is_fallback=False, execution_time_ms=execution_time_ms)
+        return Command(update=dict(state), goto="output")
+
     new_state = {**state, "log": list(state["log"])}
 
     if tier == 0:
         if is_critically_low(state):
+            save_audit_log(state, request_id, is_escalated=True, is_fallback=False, execution_time_ms=execution_time_ms)
             new_state["search_tier"] = 1
             new_state["loop_count"] = 0
             new_state["log"].append(
@@ -60,6 +68,7 @@ def _critic_node(
                 f"(AR={ar:.2f}, F={f:.2f}, CP={cp:.2f}) → 즉시 Tier 1 에스컬레이션."
             )
         elif loop >= settings.MAX_LOOPS - 1:
+            save_audit_log(state, request_id, is_escalated=True, is_fallback=False, execution_time_ms=execution_time_ms)
             new_state["search_tier"] = 1
             new_state["loop_count"] = 0
             new_state["log"].append(
@@ -67,6 +76,7 @@ def _critic_node(
                 f"(F={f:.2f}, AR={ar:.2f}) → Tier 1 에스컬레이션."
             )
         else:
+            save_audit_log(state, request_id, is_escalated=False, is_fallback=False, execution_time_ms=execution_time_ms)
             new_state["loop_count"] = loop + 1
             reasons = []
             if f < settings.FAITHFULNESS_THRESHOLD:
@@ -82,6 +92,7 @@ def _critic_node(
         return Command(update=new_state, goto="query_rewriter")
 
     if tier == 1:
+        save_audit_log(state, request_id, is_escalated=True, is_fallback=False, execution_time_ms=execution_time_ms)
         new_state["search_tier"] = 2
         new_state["loop_count"] = 0
         new_state["log"].append(
@@ -91,6 +102,7 @@ def _critic_node(
         return Command(update=new_state, goto="query_rewriter")
 
     # tier == 2 — 모든 Tier 소진
+    save_audit_log(state, request_id, is_escalated=True, is_fallback=True, execution_time_ms=execution_time_ms)
     return Command(update=new_state, goto="fallback")
 
 
@@ -109,7 +121,9 @@ def _fallback_node(state: GraphState) -> GraphState:
         "아래는 검색된 원문 자료입니다. 직접 판단하시기 바랍니다.\n\n"
         f"[참고 원문]\n{raw_ctx}"
     )
-    return output_agent(state)
+    result = output_agent(state)
+    update_audit_log_answer(result.get("request_id", ""), result["answer"])
+    return result
 
 
 # ── 그래프 빌드 ──────────────────────────────────────────────────────────────
@@ -125,12 +139,17 @@ def build_graph():
     """
     graph = StateGraph(GraphState)
 
+    def _output_node(state: GraphState) -> GraphState:
+        result = output_agent(state)
+        update_audit_log_answer(result.get("request_id", ""), result["answer"])
+        return result
+
     # 노드 등록
     graph.add_node("level_classifier", level_classifier)
     graph.add_node("query_rewriter", adaptive_query_rewriter)
     graph.add_node("rag_engine", rag_engine)
     graph.add_node("critic", _critic_node)       # Command로 조건부 라우팅
-    graph.add_node("output", output_agent)
+    graph.add_node("output", _output_node)
     graph.add_node("fallback", _fallback_node)
 
     # 엣지 연결
@@ -182,6 +201,7 @@ def run_medical_self_corrective_rag(
     tok = set_llm_provider(prov)
 
     initial_state: GraphState = {
+        "request_id": str(uuid.uuid4()),
         "question": question,
         "user_level": forced_user_level or "",
         "queries": [],
@@ -216,7 +236,8 @@ def run_medical_self_corrective_rag(
                         current_state = {**current_state, **updates}
                     step = _NODE_TO_STEP.get(node_name, node_name)
                     # query_rewriter가 재호출(재시도/에스컬레이션)될 때 tier_up/retry 먼저 렌더링
-                    if node_name == "query_rewriter" and pre_update_queries:
+                    # loop_count > 0 조건으로 최초 호출(첫 쿼리 최적화)은 제외
+                    if node_name == "query_rewriter" and pre_update_queries and current_state.get("loop_count", 0) > 0:
                         new_tier = current_state.get("search_tier", 0)
                         extra = "tier_up" if new_tier > last_rewriter_tier else "retry"
                         try:

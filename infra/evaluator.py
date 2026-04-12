@@ -6,7 +6,6 @@ from typing import List, NamedTuple, Sequence
 
 import config.settings as settings
 from core.llm_client import ragas_async_client, ragas_model
-from ragas.async_utils import run as ragas_run
 from ragas.embeddings import HuggingFaceEmbeddings
 from ragas.llms import llm_factory
 from ragas.metrics.collections.answer_relevancy import AnswerRelevancy
@@ -123,11 +122,23 @@ def compute_official_ragas_scores(
             hallu_flags=hallu_flags,
         )
 
-    async def _wrapper():
-        return await _run_all()
+    # Streamlit은 자체 이벤트 루프를 보유하므로 asyncio.run() 직접 호출 시
+    # "This event loop is already running" 오류가 발생한다.
+    # 별도 스레드에서 새 이벤트 루프를 생성해 실행하면 충돌을 피할 수 있다.
+    import concurrent.futures
+
+    def _run_in_thread() -> OfficialRagasScores:
+        new_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(new_loop)
+        try:
+            return new_loop.run_until_complete(_run_all())
+        finally:
+            new_loop.close()
 
     try:
-        return ragas_run(_wrapper)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+            future = ex.submit(_run_in_thread)
+            return future.result(timeout=120)
     except Exception as e:
         logger.error("RAGAS 평가 전체 실패: %s", e, exc_info=True)
         return OfficialRagasScores(

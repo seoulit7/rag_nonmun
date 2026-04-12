@@ -6,6 +6,7 @@ from langchain_core.tools import tool
 
 import config.settings as settings
 from infra.vector_store import (
+    load_pdf_docs,
     load_and_split_pdfs,
     build_faiss_db,
     save_faiss_db,
@@ -54,7 +55,6 @@ def initialize_vector_db(
             new_pdf_paths = [p for name, p in all_pdfs.items() if name not in indexed]
 
             if new_pdf_paths:
-                from langchain_community.document_loaders import PyPDFLoader
                 from langchain_text_splitters import RecursiveCharacterTextSplitter
                 splitter = RecursiveCharacterTextSplitter(
                     chunk_size=settings.CHUNK_MAX_CHARS,
@@ -62,8 +62,8 @@ def initialize_vector_db(
                 )
                 new_docs = []
                 for path in new_pdf_paths:
-                    loader = PyPDFLoader(str(path))
-                    chunks = splitter.split_documents(loader.load())
+                    raw = load_pdf_docs(str(path))
+                    chunks = splitter.split_documents(raw)
                     new_docs.extend(
                         c for c in chunks
                         if len(c.page_content.strip()) >= 50
@@ -142,12 +142,12 @@ def add_pdfs_to_vector_db(
 
     # 3단계: 신규 PDF만 로드 및 청크 분할
     _notify(37, f"신규 PDF {len(new_files)}개 로드 및 청크 분할 중...")
-    from langchain_community.document_loaders import PyPDFLoader
     from langchain_text_splitters import RecursiveCharacterTextSplitter
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=settings.CHUNK_MAX_CHARS,
         chunk_overlap=settings.CHUNK_OVERLAP,
     )
+
     def _is_useful_chunk(doc) -> bool:
         """URL만 있거나 내용이 너무 짧은 청크를 제외한다."""
         text = doc.page_content.strip()
@@ -159,9 +159,8 @@ def add_pdfs_to_vector_db(
 
     new_docs = []
     for i, path in enumerate(temp_paths):
-        loader = PyPDFLoader(str(path))
-        pages = loader.load()
-        chunks = splitter.split_documents(pages)
+        raw = load_pdf_docs(str(path))
+        chunks = splitter.split_documents(raw)
         useful = [c for c in chunks if _is_useful_chunk(c)]
         new_docs.extend(useful)
         pct = 37 + int((i + 1) / len(temp_paths) * 23)
@@ -189,6 +188,83 @@ def add_pdfs_to_vector_db(
     _notify(100, f"완료! {len(new_files)}개 PDF, {len(new_docs)}개 청크 추가되었습니다.")
 
     return len(new_files), len(new_docs)
+
+
+def rebuild_full_index(
+    data_folder: str = None,
+    index_path: str = None,
+    on_progress: Optional[Callable[[int, str], None]] = None,
+) -> tuple:
+    """data 폴더의 전체 PDF를 처음부터 재임베딩하여 FAISS 인덱스를 재빌드한다.
+
+    기존 인덱스 파일을 덮어쓰고 메모리의 _db도 교체한다.
+
+    Args:
+        data_folder: PDF 폴더 경로 (기본값: settings.DATA_DIR)
+        index_path:  FAISS 인덱스 저장 경로 (기본값: settings.INDEX_PATH)
+        on_progress: (percent: int, message: str) 진행상황 콜백
+
+    Returns:
+        (처리된 PDF 수, 생성된 청크 수)
+    """
+    global _db
+
+    data_folder = data_folder or settings.DATA_DIR
+    index_path = index_path or settings.INDEX_PATH
+    data_path = Path(data_folder)
+
+    def _notify(percent: int, msg: str) -> None:
+        if on_progress:
+            on_progress(percent, msg)
+
+    # 1단계: PDF 목록 수집
+    _notify(2, "PDF 파일 목록 수집 중...")
+    pdf_paths = sorted(data_path.glob("**/*.pdf"))
+    if not pdf_paths:
+        raise RuntimeError(f"'{data_folder}' 폴더에 PDF 파일이 없습니다.")
+
+    # 2단계: 전체 PDF 로드 및 청크 분할
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=settings.CHUNK_MAX_CHARS,
+        chunk_overlap=settings.CHUNK_OVERLAP,
+    )
+
+    def _is_useful_chunk(doc) -> bool:
+        text = doc.page_content.strip()
+        if len(text) < 50:
+            return False
+        if text.startswith("http://") or text.startswith("https://"):
+            return False
+        return True
+
+    if settings.PDF_OCR_ENABLED:
+        _notify(5, f"총 {len(pdf_paths)}개 PDF 발견. OCR 모드로 로드 중... (시간이 더 걸릴 수 있습니다)")
+    else:
+        _notify(5, f"총 {len(pdf_paths)}개 PDF 발견. 로드 및 청크 분할 중...")
+
+    all_docs = []
+    for i, path in enumerate(pdf_paths):
+        raw = load_pdf_docs(str(path))
+        chunks = splitter.split_documents(raw)
+        useful = [c for c in chunks if _is_useful_chunk(c)]
+        all_docs.extend(useful)
+        pct = 5 + int((i + 1) / len(pdf_paths) * 50)
+        _notify(pct, f"[{i+1}/{len(pdf_paths)}] {path.name} → {len(useful)}청크")
+
+    _notify(57, f"총 {len(all_docs)}개 청크 생성. 임베딩 중... (수 분 소요될 수 있습니다)")
+
+    # 3단계: 전체 임베딩 및 FAISS 빌드
+    new_db = build_faiss_db(all_docs)
+    _notify(92, "인덱스 저장 중...")
+
+    # 4단계: 저장 및 메모리 교체
+    save_faiss_db(new_db, index_path)
+    _db = new_db
+    _notify(100, f"완료! {len(pdf_paths)}개 PDF, {len(all_docs)}개 청크로 인덱스 재빌드 완료.")
+
+    return len(pdf_paths), len(all_docs)
 
 
 @tool

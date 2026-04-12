@@ -95,6 +95,10 @@ wikipedia = "1.*"
 scikit-learn = "1.*"
 sentence-transformers = "3.*"
 duckduckgo-search = ">=6.0"
+psycopg2-binary = ">=2.9"
+scipy = ">=1.11,<2"
+pandas = "2.*"
+matplotlib = "3.*"
 
 [tool.poetry.scripts]
 medical-rag-ui = "launch:main"

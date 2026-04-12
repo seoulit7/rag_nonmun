@@ -129,6 +129,13 @@ RAGAS_CONTEXT_MAX_CHARS = _env_int("MEDICAL_RAG_RAGAS_CONTEXT_MAX_CHARS", 2000)
 # Faithfulness JSON 생성 시 출력 토큰 한도 (기본 3072는 긴 의료 텍스트에서 부족)
 RAGAS_LLM_MAX_TOKENS = _env_int("MEDICAL_RAG_RAGAS_LLM_MAX_TOKENS", 8192)
 
+# Supabase audit log
+SUPABASE_DB_URL = _env("SUPABASE_DB_URL", "")
+
+# PDF OCR (스캔 PDF 텍스트 추출)
+# rapidocr-onnxruntime 패키지 필요. true로 설정하면 PyPDFLoader extract_images=True 사용.
+PDF_OCR_ENABLED = _env("MEDICAL_RAG_PDF_OCR", "false").lower() in ("1", "true", "yes")
+
 if _env("LANGSMITH_TRACING", "").lower() in ("1", "true", "yes"):
     os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
     if _env("LANGSMITH_ENDPOINT"):

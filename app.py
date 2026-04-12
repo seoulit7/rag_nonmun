@@ -19,7 +19,20 @@ for key, default in SESSION_DEFAULTS.items():
     if key not in st.session_state:
         st.session_state[key] = default
 
-user_persona, llm_backend = render_sidebar()
+user_persona, llm_backend, dashboard_menu = render_sidebar()
+
+# ── 대시보드 메뉴 선택 시 해당 화면만 표시 ────────────────────────────────────
+if dashboard_menu == "로그 조회":
+    from ui.dashboard import render_log_viewer
+    render_log_viewer()
+    st.stop()
+
+elif dashboard_menu == "성능 시각화":
+    from ui.dashboard import render_performance_viz
+    render_performance_viz()
+    st.stop()
+
+# ── 기본 RAG 화면 ─────────────────────────────────────────────────────────────
 render_pdf_uploader()
 render_header()
 

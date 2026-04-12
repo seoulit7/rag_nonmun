@@ -1,7 +1,6 @@
 from pathlib import Path
 from typing import List
 
-from langchain_community.document_loaders import PyPDFDirectoryLoader
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -14,16 +13,74 @@ def _get_embeddings() -> HuggingFaceEmbeddings:
     return HuggingFaceEmbeddings(model_name=settings.EMBEDDING_MODEL)
 
 
-def load_and_split_pdfs(folder_path: str) -> List[Document]:
-    """폴더 내 PDF를 로드하고 청크로 분할합니다."""
-    loader = PyPDFDirectoryLoader(folder_path)
-    docs = loader.load()
+def load_pdf_docs(pdf_path: str) -> List[Document]:
+    """단일 PDF 파일을 로드하여 Document 목록을 반환한다.
 
-    if not docs:
+    MEDICAL_RAG_PDF_OCR=true 인 경우:
+    - 텍스트 레이어가 없는 페이지는 PyMuPDF로 이미지 렌더링 후
+      rapidocr-onnxruntime으로 OCR을 수행한다.
+    - 텍스트 레이어가 있는 페이지는 그대로 사용한다.
+    """
+    from langchain_community.document_loaders import PyPDFLoader
+
+    path = Path(pdf_path)
+
+    if not settings.PDF_OCR_ENABLED:
+        return PyPDFLoader(str(path)).load()
+
+    # OCR 모드: 텍스트가 없는 페이지는 rapidocr로 추출
+    try:
+        import fitz  # PyMuPDF
+        import numpy as np
+        from rapidocr_onnxruntime import RapidOCR
+        _ocr_engine = RapidOCR()
+    except ImportError as e:
+        # fallback: extract_images=True (PyPDF built-in)
+        return PyPDFLoader(str(path), extract_images=True).load()
+
+    doc = fitz.open(str(path))
+    documents: List[Document] = []
+
+    for page_num, page in enumerate(doc):
+        text = page.get_text().strip()
+
+        if not text:
+            # 스캔 페이지: 이미지로 렌더링 후 OCR
+            mat = fitz.Matrix(2, 2)  # 2× 확대로 인식률 향상
+            pix = page.get_pixmap(matrix=mat)
+            arr = np.frombuffer(pix.samples, dtype=np.uint8).reshape(
+                pix.height, pix.width, pix.n
+            )
+            if pix.n == 4:
+                arr = arr[:, :, :3]
+
+            result, _ = _ocr_engine(arr)
+            if result:
+                text = " ".join(line[1] for line in result)
+
+        if text:
+            documents.append(
+                Document(
+                    page_content=text,
+                    metadata={"source": str(path), "page": page_num},
+                )
+            )
+
+    return documents
+
+
+def load_and_split_pdfs(folder_path: str) -> List[Document]:
+    """폴더 내 전체 PDF를 로드하고 청크로 분할한다."""
+    pdf_paths = sorted(Path(folder_path).glob("**/*.pdf"))
+    if not pdf_paths:
         raise RuntimeError(
             f"'{folder_path}' 폴더에 PDF 파일이 없습니다. "
             "MSD 매뉴얼 PDF를 data 폴더에 넣은 후 다시 실행하세요."
         )
+
+    docs: List[Document] = []
+    for path in pdf_paths:
+        docs.extend(load_pdf_docs(str(path)))
 
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=settings.CHUNK_MAX_CHARS,

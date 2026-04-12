@@ -2,6 +2,7 @@ from typing import TypedDict, List
 
 
 class GraphState(TypedDict):
+    request_id: str                    # 워크플로우 전체를 관통하는 고유 ID (UUID)
     question: str
     user_level: str
     queries: List[str]
