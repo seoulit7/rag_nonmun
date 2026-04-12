@@ -20,14 +20,28 @@ if not (os.environ.get("OPENAI_API_KEY") or "").strip():
 # os.environ에 없는 키만 주입하여 로컬 .env 값을 덮어쓰지 않는다.
 try:
     import streamlit as st
+
+    def _inject_secret(k: str, v) -> None:
+        """단일 키-값 쌍을 os.environ에 대소문자 양쪽으로 주입한다."""
+        if not isinstance(v, str):
+            return
+        k_upper = k.upper()
+        if k_upper not in os.environ:
+            os.environ[k_upper] = v
+        if k not in os.environ:
+            os.environ[k] = v
+
     for _k, _v in st.secrets.items():
         if isinstance(_v, str):
-            # 소문자 키(supabase_db_url)도 대문자(SUPABASE_DB_URL)로 정규화하여 주입
-            _k_upper = _k.upper()
-            if _k_upper not in os.environ:
-                os.environ[_k_upper] = _v
-            if _k not in os.environ:
-                os.environ[_k] = _v
+            # 섹션 없는 flat 키
+            _inject_secret(_k, _v)
+        else:
+            # [섹션] 하위 키들 (AttrDict)
+            try:
+                for _sk, _sv in _v.items():
+                    _inject_secret(_sk, _sv)
+            except Exception:
+                pass
 except Exception:
     pass
 
