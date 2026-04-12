@@ -21,8 +21,13 @@ if not (os.environ.get("OPENAI_API_KEY") or "").strip():
 try:
     import streamlit as st
     for _k, _v in st.secrets.items():
-        if isinstance(_v, str) and _k not in os.environ:
-            os.environ[_k] = _v
+        if isinstance(_v, str):
+            # 소문자 키(supabase_db_url)도 대문자(SUPABASE_DB_URL)로 정규화하여 주입
+            _k_upper = _k.upper()
+            if _k_upper not in os.environ:
+                os.environ[_k_upper] = _v
+            if _k not in os.environ:
+                os.environ[_k] = _v
 except Exception:
     pass
 

@@ -76,17 +76,17 @@ def _render_dashboard_menu() -> str:
         st.session_state["dashboard_menu"] = ""
 
     with st.sidebar.expander("📊 RAG 성능 대시보드", expanded=bool(st.session_state["dashboard_menu"])):
-        if st.button("📋 로그 조회", use_container_width=True,
+        if st.button("📋 로그 조회", width="stretch",
                      type="primary" if st.session_state["dashboard_menu"] == "로그 조회" else "secondary"):
             st.session_state["dashboard_menu"] = "로그 조회"
             st.rerun()
-        if st.button("📈 성능 시각화", use_container_width=True,
+        if st.button("📈 성능 시각화", width="stretch",
                      type="primary" if st.session_state["dashboard_menu"] == "성능 시각화" else "secondary"):
             st.session_state["dashboard_menu"] = "성능 시각화"
             st.rerun()
         if st.session_state["dashboard_menu"]:
             st.markdown("---")
-            if st.button("✕ 닫기", use_container_width=True):
+            if st.button("✕ 닫기", width="stretch"):
                 st.session_state["dashboard_menu"] = ""
                 st.rerun()
 
@@ -108,7 +108,7 @@ def _render_index_rebuilder() -> None:
     # ── idle: 버튼 표시 ────────────────────────────────────────────────────
     if status == "idle":
         if st.sidebar.button(
-            "인덱스 전체 재빌드", type="secondary", use_container_width=True
+            "인덱스 전체 재빌드", type="secondary", width="stretch"
         ):
             # 공유 딕셔너리 초기화 (메인 스레드에서만)
             _shared["pct"]    = 0
@@ -164,13 +164,13 @@ def _render_index_rebuilder() -> None:
         if result:
             n_pdfs, n_chunks = result
             st.sidebar.success(f"재빌드 완료: {n_pdfs}개 PDF · {n_chunks:,}개 청크")
-        if st.sidebar.button("확인", key="rebuild_done_btn", use_container_width=True):
+        if st.sidebar.button("확인", key="rebuild_done_btn", width="stretch"):
             st.session_state[_REBUILD_STATUS] = "idle"
             st.rerun()
 
     # ── error: 오류 메시지 ─────────────────────────────────────────────────
     elif status == "error":
         st.sidebar.error(f"오류: {_shared.get('error', '알 수 없는 오류')}")
-        if st.sidebar.button("닫기", key="rebuild_error_btn", use_container_width=True):
+        if st.sidebar.button("닫기", key="rebuild_error_btn", width="stretch"):
             st.session_state[_REBUILD_STATUS] = "idle"
             st.rerun()

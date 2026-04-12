@@ -41,7 +41,7 @@ def render_pdf_uploader() -> None:
 
     st.sidebar.caption(f"{len(uploaded)}개 파일 선택됨")
 
-    if not st.sidebar.button("🔄 인덱스 재빌드", type="primary", use_container_width=True):
+    if not st.sidebar.button("🔄 인덱스 재빌드", type="primary", width="stretch"):
         return
 
     # 진행 상황 표시 (메인 화면 중앙에 표시)

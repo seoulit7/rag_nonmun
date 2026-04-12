@@ -64,7 +64,7 @@ def render_list() -> None:
             )
             keyword = st.text_input("키워드 (원본 질문)", key="lf_keyword")
 
-        searched = st.button("조회", type="primary", use_container_width=False)
+        searched = st.button("조회", type="primary", width="content")
 
     # 조회 버튼 또는 초기 진입 시 실행
     if searched or "log_df" not in st.session_state:
@@ -113,7 +113,7 @@ def render_list() -> None:
         .format({"F": "{:.3f}", "AR": "{:.3f}", "CP": "{:.3f}"}, na_rep="—")
     )
 
-    st.dataframe(styled, use_container_width=True, hide_index=True)
+    st.dataframe(styled, width="stretch", hide_index=True)
 
     # ── 행 선택 → 상세 이동 ──────────────────────────────────────────────────
     request_ids = df["request_id"].astype(str).tolist()
@@ -135,7 +135,7 @@ def render_list() -> None:
     st.markdown("---")
     pcol1, pcol2, pcol3 = st.columns([1, 2, 1])
     with pcol1:
-        if page > 1 and st.button("◀ 이전", use_container_width=True):
+        if page > 1 and st.button("◀ 이전", width="stretch"):
             st.session_state["log_page"] = page - 1
             _run_query(date_from, date_to, user_levels, tiers,
                        escalated_opt, fallback_opt, f_range, keyword)
@@ -146,7 +146,7 @@ def render_list() -> None:
             unsafe_allow_html=True,
         )
     with pcol3:
-        if page < total_pages and st.button("다음 ▶", use_container_width=True):
+        if page < total_pages and st.button("다음 ▶", width="stretch"):
             st.session_state["log_page"] = page + 1
             _run_query(date_from, date_to, user_levels, tiers,
                        escalated_opt, fallback_opt, f_range, keyword)
