@@ -1,22 +1,8 @@
-import time
-import threading
 from typing import Tuple
 
 import streamlit as st
 
-# ── 스레드 간 공유 딕셔너리 (st.session_state 금지 구역) ─────────────────────
-# 백그라운드 스레드는 이 딕셔너리에만 쓴다.
-# 메인 스레드(Streamlit rerun)가 폴링 시 읽어서 session_state로 복사한다.
-_shared: dict = {
-    "pct":    0,
-    "msg":    "",
-    "result": None,   # (n_pdfs, n_chunks)
-    "error":  "",
-    "done":   False,
-    "failed": False,
-}
-
-# session_state 키 상수 (메인 스레드 전용)
+# session_state 키 상수
 _REBUILD_STATUS = "rebuild_status"   # idle | running | done | error
 
 
@@ -94,11 +80,11 @@ def _render_dashboard_menu() -> str:
 
 
 def _render_index_rebuilder() -> None:
-    """인덱스 재빌더 UI — 백그라운드 스레드 + 모듈 공유 딕셔너리 폴링 방식.
+    """인덱스 재빌더 UI — 메인 스레드 동기 실행 방식.
 
-    핵심 원칙:
-    - 백그라운드 스레드는 _shared 딕셔너리에만 쓴다 (st.session_state 접근 금지).
-    - 메인 스레드(Streamlit rerun)가 2초마다 _shared를 읽어 UI를 갱신한다.
+    Streamlit Cloud에서 모듈 레벨 공유 dict가 rerun마다 초기화되는 문제를 피하기 위해
+    백그라운드 스레드 없이 메인 스레드에서 직접 실행한다.
+    진행 결과는 session_state에 저장한다.
     """
     st.sidebar.subheader("인덱스 재빌더")
     st.sidebar.caption("data 폴더의 전체 PDF를 재임베딩하여 FAISS 인덱스를 새로 생성합니다.")
@@ -107,60 +93,35 @@ def _render_index_rebuilder() -> None:
 
     # ── idle: 버튼 표시 ────────────────────────────────────────────────────
     if status == "idle":
-        if st.sidebar.button(
-            "인덱스 전체 재빌드", type="secondary", width="stretch"
-        ):
-            # 공유 딕셔너리 초기화 (메인 스레드에서만)
-            _shared["pct"]    = 0
-            _shared["msg"]    = "준비 중..."
-            _shared["result"] = None
-            _shared["error"]  = ""
-            _shared["done"]   = False
-            _shared["failed"] = False
-
+        if st.sidebar.button("인덱스 전체 재빌드", type="secondary", width="stretch"):
             st.session_state[_REBUILD_STATUS] = "running"
-
-            def _worker() -> None:
-                """백그라운드 재빌드 — st.* API 일절 사용 금지."""
-                try:
-                    from tools.vector_search import rebuild_full_index
-
-                    def on_progress(pct: int, msg: str) -> None:
-                        # 일반 dict 쓰기만 수행 (thread-safe)
-                        _shared["pct"] = pct
-                        _shared["msg"] = msg
-
-                    n_pdfs, n_chunks = rebuild_full_index(on_progress=on_progress)
-                    _shared["result"] = (n_pdfs, n_chunks)
-                    _shared["done"]   = True
-
-                except Exception as exc:
-                    _shared["error"]  = str(exc)
-                    _shared["failed"] = True
-
-            threading.Thread(target=_worker, daemon=True).start()
             st.rerun()
 
-    # ── running: _shared 폴링 후 UI 갱신 ──────────────────────────────────
+    # ── running: 동기 실행 ────────────────────────────────────────────────
     elif status == "running":
-        pct = _shared["pct"]
-        msg = _shared["msg"] or "진행 중..."
+        progress_bar = st.sidebar.progress(0, text="준비 중...")
+        status_text  = st.sidebar.empty()
 
-        st.sidebar.progress(pct / 100, text=msg)
-        st.sidebar.caption(f"백그라운드 재빌드 중... {pct}%")
+        try:
+            from tools.vector_search import rebuild_full_index
 
-        # 완료/실패 감지 → session_state 상태 전환 (메인 스레드에서만)
-        if _shared["done"]:
-            st.session_state[_REBUILD_STATUS] = "done"
-        elif _shared["failed"]:
-            st.session_state[_REBUILD_STATUS] = "error"
+            def on_progress(pct: int, msg: str) -> None:
+                progress_bar.progress(min(pct, 100) / 100, text=msg)
+                status_text.caption(f"재빌드 중... {pct}%")
 
-        time.sleep(2)   # 2초 후 rerun → 진행률 갱신
+            n_pdfs, n_chunks = rebuild_full_index(on_progress=on_progress)
+            st.session_state["rebuild_result"] = (n_pdfs, n_chunks)
+            st.session_state[_REBUILD_STATUS]  = "done"
+
+        except Exception as exc:
+            st.session_state["rebuild_error"]  = str(exc)
+            st.session_state[_REBUILD_STATUS]  = "error"
+
         st.rerun()
 
     # ── done: 완료 메시지 ──────────────────────────────────────────────────
     elif status == "done":
-        result = _shared.get("result")
+        result = st.session_state.get("rebuild_result")
         if result:
             n_pdfs, n_chunks = result
             st.sidebar.success(f"재빌드 완료: {n_pdfs}개 PDF · {n_chunks:,}개 청크")
@@ -170,7 +131,7 @@ def _render_index_rebuilder() -> None:
 
     # ── error: 오류 메시지 ─────────────────────────────────────────────────
     elif status == "error":
-        st.sidebar.error(f"오류: {_shared.get('error', '알 수 없는 오류')}")
+        st.sidebar.error(f"오류: {st.session_state.get('rebuild_error', '알 수 없는 오류')}")
         if st.sidebar.button("닫기", key="rebuild_error_btn", width="stretch"):
             st.session_state[_REBUILD_STATUS] = "idle"
             st.rerun()
