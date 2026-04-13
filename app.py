@@ -1,6 +1,14 @@
+import logging
+
 import streamlit as st
 
 import config.settings as settings
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+settings.setup_logging()
 from medical_rag_graph import run_medical_self_corrective_rag
 from ui import (
     SESSION_DEFAULTS,
