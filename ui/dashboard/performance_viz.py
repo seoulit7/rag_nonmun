@@ -509,7 +509,7 @@ def render_performance_viz() -> None:
     st.caption("Repeated self-correction loops improve Faithfulness and suppress hallucination.")
     buf1 = _plot_self_correction(df)
     if buf1:
-        st.image(buf1, use_container_width=True)
+        st.image(buf1, width="stretch")
 
         # CI 공식 및 대입값 표시
         with st.expander("95% Confidence Interval — Formula & Substituted Values", expanded=True):
@@ -540,7 +540,7 @@ def render_performance_viz() -> None:
                     "CI Lower": round(mean - ci, 4),
                     "CI Upper": round(mean + ci, 4),
                 })
-            st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+            st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
     else:
         st.info("Insufficient data.")
 
@@ -573,7 +573,7 @@ def render_performance_viz() -> None:
     )
     buf_ar = _plot_ar_escalation_zone(df)
     if buf_ar:
-        st.image(buf_ar, use_container_width=True)
+        st.image(buf_ar, width="stretch")
         ar_esc_n = int((df["is_escalated"] & (df["ragas_ar"] < _IMM_AR_THR)).sum())
         all_n    = int(df["ragas_ar"].notna().sum())
         st.markdown(
@@ -593,7 +593,7 @@ def render_performance_viz() -> None:
     )
     buf_dz = _plot_decision_zone(df)
     if buf_dz:
-        st.image(buf_dz, use_container_width=True)
+        st.image(buf_dz, width="stretch")
         imm_n = int(((df["ragas_cp"] < _IMM_CP_THR) & (df["ragas_f"] < _IMM_F_THR) & df["is_escalated"]).sum())
         all_n = int((df["ragas_cp"].notna() & df["ragas_f"].notna()).sum())
         st.markdown(
@@ -611,7 +611,7 @@ def render_performance_viz() -> None:
     st.caption("Higher context precision is positively correlated with answer relevance.")
     buf3 = _plot_cp_ar_scatter(df)
     if buf3:
-        st.image(buf3, use_container_width=True)
+        st.image(buf3, width="stretch")
         valid = df[["ragas_cp", "ragas_ar"]].dropna()
         if len(valid) > 2:
             corr  = valid["ragas_cp"].corr(valid["ragas_ar"])
@@ -632,7 +632,7 @@ def render_performance_viz() -> None:
     st.caption("The system maintains high reliability scores for both Professional and Consumer users.")
     buf4 = _plot_user_level_bar(df)
     if buf4:
-        st.image(buf4, use_container_width=True)
+        st.image(buf4, width="stretch")
 
         # CI 공식 및 대입값 표시
         with st.expander("95% Confidence Interval — Formula & Substituted Values", expanded=True):
@@ -671,7 +671,7 @@ def render_performance_viz() -> None:
                         "CI Lower": round(mean - ci, 4),
                         "CI Upper": round(mean + ci, 4),
                     })
-            st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+            st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
     else:
         st.info("Insufficient data.")
 
@@ -689,7 +689,7 @@ def render_performance_viz() -> None:
     st.caption("Each tier added cumulatively increases the proportion of requests meeting quality thresholds (F≥0.8 & AR≥0.8).")
     buf_cs = _plot_cumulative_success(df)
     if buf_cs:
-        st.image(buf_cs, use_container_width=True)
+        st.image(buf_cs, width="stretch")
         def _success_rate(max_tier):
             pool = df[df["ragas_f"].notna() & df["ragas_ar"].notna() & (df["tier_id"] <= max_tier)]
             best = pool.sort_values("tier_id").groupby("request_id").last()
@@ -700,7 +700,7 @@ def render_performance_viz() -> None:
             {"Stage": "Tier 0 only (Vector DB)",   "Success Rate (%)": r0, "Gain (%)": "—"},
             {"Stage": "Tier 0+1 (+LLM)",           "Success Rate (%)": r1, "Gain (%)": f"+{r1-r0:.1f}"},
             {"Stage": "Tier 0+1+2 (+Web Search)",  "Success Rate (%)": r2, "Gain (%)": f"+{r2-r1:.1f}"},
-        ]), hide_index=True, use_container_width=False)
+        ]), hide_index=True, width="content")
     else:
         st.info("Insufficient data.")
 

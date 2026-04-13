@@ -83,7 +83,7 @@ def render_detail(request_id: str) -> None:
                   subset=["CP"])
         .format({"F": "{:.3f}", "AR": "{:.3f}", "CP": "{:.3f}"}, na_rep="—")
     )
-    st.dataframe(styled, use_container_width=True, hide_index=True)
+    st.dataframe(styled, width="stretch", hide_index=True)
 
     # 에스컬레이션 원인 자동 분석
     _render_escalation_summary(loops_df)

@@ -22,17 +22,26 @@ try:
     import streamlit as st
 
     def _inject_secret(k: str, v) -> None:
-        """단일 키-값 쌍을 os.environ에 대소문자 양쪽으로 주입한다."""
-        if not isinstance(v, str):
-            return
+        """단일 키-값 쌍을 os.environ에 대소문자 양쪽으로 주입한다.
+        TOML boolean/int도 문자열로 변환하여 주입한다.
+        """
+        # str이 아닌 타입(bool, int, float)도 문자열로 변환
+        if isinstance(v, bool):
+            v_str = "true" if v else "false"
+        elif isinstance(v, (int, float)):
+            v_str = str(v)
+        elif isinstance(v, str):
+            v_str = v
+        else:
+            return  # dict 등 복합 타입은 스킵
         k_upper = k.upper()
         if k_upper not in os.environ:
-            os.environ[k_upper] = v
+            os.environ[k_upper] = v_str
         if k not in os.environ:
-            os.environ[k] = v
+            os.environ[k] = v_str
 
     for _k, _v in st.secrets.items():
-        if isinstance(_v, str):
+        if not hasattr(_v, "items"):
             # 섹션 없는 flat 키
             _inject_secret(_k, _v)
         else:

@@ -94,7 +94,7 @@ def render_header() -> None:
 
     with st.expander("LangGraph 파이프라인 시각화 및 설명"):
         if PNG_PATH:
-            st.image(str(PNG_PATH), use_container_width=True)
+            st.image(str(PNG_PATH), width="stretch")
         else:
             st.warning("image/ 폴더에 PNG 파일이 없습니다.")
         st.markdown(_PIPELINE_DESCRIPTION)
