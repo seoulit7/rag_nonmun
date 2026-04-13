@@ -27,21 +27,6 @@ for key, default in SESSION_DEFAULTS.items():
     if key not in st.session_state:
         st.session_state[key] = default
 
-# ── 앱 시작 시 FAISS 인덱스 자동 초기화 ──────────────────────────────────────
-# Streamlit Cloud는 재시작마다 파일시스템이 초기화되므로 매번 빌드 필요.
-# session_state로 중복 실행 방지 (같은 세션에서는 한 번만 실행).
-if not st.session_state.get("_vector_db_initialized"):
-    from pathlib import Path
-    from tools.vector_search import initialize_vector_db
-    index_exists = Path(settings.INDEX_PATH).exists()
-    if not index_exists:
-        with st.spinner("FAISS 인덱스 초기화 중... (최초 실행 시 수 분 소요)"):
-            try:
-                initialize_vector_db()
-                st.toast("인덱스 초기화 완료!", icon="✅")
-            except Exception as e:
-                st.warning(f"인덱스 초기화 실패: {e}")
-    st.session_state["_vector_db_initialized"] = True
 
 user_persona, llm_backend, dashboard_menu = render_sidebar()
 
