@@ -63,7 +63,8 @@ def _load_data() -> pd.DataFrame:
 
 
 # ── Common Helpers ────────────────────────────────────────────────────────────
-_THRESHOLD    = 0.80
+_THRESHOLD    = 0.80   # F, CP threshold
+_AR_THRESHOLD = 0.70   # AR threshold (settings: MEDICAL_RAG_AR_THRESHOLD)
 _LEVEL_COLORS = {"Professional": "#2980b9", "Consumer": "#e67e22"}
 
 
@@ -365,7 +366,7 @@ def _plot_cumulative_success(df: pd.DataFrame):
         pool = sub[sub["tier_id"] <= max_tier]
         # For each request, take the row with highest tier reached
         best = pool.sort_values("tier_id").groupby("request_id").last().reset_index()
-        ok = ((best["ragas_f"] >= _THRESHOLD) & (best["ragas_ar"] >= _THRESHOLD)).sum()
+        ok = ((best["ragas_f"] >= _THRESHOLD) & (best["ragas_ar"] >= _AR_THRESHOLD)).sum()
         return ok / len(best) * 100 if len(best) else 0.0
 
     stages   = ["Tier 0\n(Vector DB)", "Tier 0+1\n(+LLM)", "Tier 0+1+2\n(+Web)"]
@@ -401,7 +402,7 @@ def _plot_cumulative_success(df: pd.DataFrame):
 
     ax.set_title("Cumulative Answer Success Rate by Knowledge Tier",
                  fontsize=13, fontweight="bold", pad=14)
-    ax.set_ylabel("Success Rate (F≥0.8 & AR≥0.8, %)", fontsize=11)
+    ax.set_ylabel("Success Rate (F≥0.8 & AR≥0.7, %)", fontsize=11)
     ax.set_ylim(0, 115)
     ax.legend(fontsize=10, loc="upper left")
     ax.grid(True, axis="y", alpha=0.4)
@@ -423,7 +424,7 @@ def _render_summary_cards(df: pd.DataFrame) -> None:
     total         = len(final)
     success_mask  = (
         (final["ragas_f"]  >= _THRESHOLD) &
-        (final["ragas_ar"] >= _THRESHOLD) &
+        (final["ragas_ar"] >= _AR_THRESHOLD) &
         (final["ragas_cp"] >= _THRESHOLD)
     )
     success_rate  = success_mask.mean() * 100 if total else 0.0
@@ -438,7 +439,7 @@ def _render_summary_cards(df: pd.DataFrame) -> None:
 
     c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
     c1.metric("Requests",              f"{total:,}")
-    c2.metric("Success (F∧AR∧CP≥0.8)", f"{success_rate:.1f}%")
+    c2.metric("Success (F≥0.8∧AR≥0.7∧CP≥0.8)", f"{success_rate:.1f}%")
     c3.metric("Avg F",           f"{avg_f:.3f}"  if not pd.isna(avg_f)  else "—")
     c4.metric("Avg AR",          f"{avg_ar:.3f}" if not pd.isna(avg_ar) else "—")
     c5.metric("Avg CP",          f"{avg_cp:.3f}" if not pd.isna(avg_cp) else "—")
@@ -692,7 +693,7 @@ def render_performance_viz() -> None:
         def _success_rate(max_tier):
             pool = df[df["ragas_f"].notna() & df["ragas_ar"].notna() & (df["tier_id"] <= max_tier)]
             best = pool.sort_values("tier_id").groupby("request_id").last()
-            ok = ((best["ragas_f"] >= _THRESHOLD) & (best["ragas_ar"] >= _THRESHOLD)).sum()
+            ok = ((best["ragas_f"] >= _THRESHOLD) & (best["ragas_ar"] >= _AR_THRESHOLD)).sum()
             return round(ok / len(best) * 100, 1) if len(best) else 0.0
         r0, r1, r2 = _success_rate(0), _success_rate(1), _success_rate(2)
         st.dataframe(pd.DataFrame([
