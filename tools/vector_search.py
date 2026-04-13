@@ -17,15 +17,6 @@ from infra.vector_store import (
 _db = None
 
 
-def _get_indexed_filenames(db) -> set:
-    """FAISS 도큐먼트 스토어에서 이미 인덱싱된 파일명 집합을 반환한다."""
-    names = set()
-    for doc in db.docstore._dict.values():
-        src = doc.metadata.get("source", "")
-        if src:
-            names.add(Path(src).name)
-    return names
-
 
 def initialize_vector_db(
     data_folder: str = None,
@@ -46,40 +37,9 @@ def initialize_vector_db(
     data_path = Path(data_folder)
 
     if Path(index_path).exists():
+        # 인덱스 파일이 있으면 로드만 수행 (증분 추가 없음)
+        # 새 PDF 추가는 사이드바의 PDF 업로드 또는 인덱스 재빌드 버튼으로만 수행
         _db = load_faiss_db(index_path)
-
-        # data 폴더의 PDF 중 아직 인덱싱되지 않은 파일 확인
-        if data_path.exists():
-            all_pdfs = {p.name: p for p in data_path.glob("**/*.pdf")}
-            indexed = _get_indexed_filenames(_db)
-            new_pdf_paths = [p for name, p in all_pdfs.items() if name not in indexed]
-
-            if new_pdf_paths:
-                from langchain_text_splitters import RecursiveCharacterTextSplitter
-                splitter = RecursiveCharacterTextSplitter(
-                    chunk_size=settings.CHUNK_MAX_CHARS,
-                    chunk_overlap=settings.CHUNK_OVERLAP,
-                )
-                new_docs = []
-                for path in new_pdf_paths:
-                    raw = load_pdf_docs(str(path))
-                    chunks = splitter.split_documents(raw)
-                    new_docs.extend(
-                        c for c in chunks
-                        if len(c.page_content.strip()) >= 50
-                        and not c.page_content.strip().startswith(("http://", "https://"))
-                    )
-
-                if new_docs:
-                    new_index = build_faiss_db(new_docs)
-                    try:
-                        _db.merge_from(new_index)
-                        save_faiss_db(_db, index_path)
-                    except Exception:
-                        # 차원 불일치 등으로 merge 실패 시 전체 재빌드
-                        all_docs = load_and_split_pdfs(data_folder)
-                        _db = build_faiss_db(all_docs)
-                        save_faiss_db(_db, index_path)
         return
 
     docs = load_and_split_pdfs(data_folder)
