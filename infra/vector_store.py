@@ -28,45 +28,54 @@ def load_pdf_docs(pdf_path: str) -> List[Document]:
     if not settings.PDF_OCR_ENABLED:
         return PyPDFLoader(str(path)).load()
 
-    # OCR 모드: 텍스트가 없는 페이지는 rapidocr로 추출
+    # OCR 모드: 텍스트가 없는 페이지만 rapidocr로 추출
+    # PyMuPDF + rapidocr 미설치 환경(Streamlit Cloud 등)은 일반 PyPDFLoader로 fallback
     try:
         import fitz  # PyMuPDF
         import numpy as np
         from rapidocr_onnxruntime import RapidOCR
         _ocr_engine = RapidOCR()
-    except ImportError as e:
-        # fallback: extract_images=True (PyPDF built-in)
-        return PyPDFLoader(str(path), extract_images=True).load()
+    except Exception:
+        # OCR 라이브러리 없는 환경 → 일반 텍스트 추출로 fallback
+        return PyPDFLoader(str(path)).load()
 
-    doc = fitz.open(str(path))
-    documents: List[Document] = []
+    try:
+        doc = fitz.open(str(path))
+        documents: List[Document] = []
 
-    for page_num, page in enumerate(doc):
-        text = page.get_text().strip()
+        for page_num, page in enumerate(doc):
+            text = page.get_text().strip()
 
-        if not text:
-            # 스캔 페이지: 이미지로 렌더링 후 OCR
-            mat = fitz.Matrix(2, 2)  # 2× 확대로 인식률 향상
-            pix = page.get_pixmap(matrix=mat)
-            arr = np.frombuffer(pix.samples, dtype=np.uint8).reshape(
-                pix.height, pix.width, pix.n
-            )
-            if pix.n == 4:
-                arr = arr[:, :, :3]
+            if not text:
+                # 스캔 페이지: 이미지로 렌더링 후 OCR
+                try:
+                    mat = fitz.Matrix(2, 2)  # 2× 확대로 인식률 향상
+                    pix = page.get_pixmap(matrix=mat)
+                    arr = np.frombuffer(pix.samples, dtype=np.uint8).reshape(
+                        pix.height, pix.width, pix.n
+                    )
+                    if pix.n == 4:
+                        arr = arr[:, :, :3]
 
-            result, _ = _ocr_engine(arr)
-            if result:
-                text = " ".join(line[1] for line in result)
+                    result, _ = _ocr_engine(arr)
+                    if result:
+                        text = " ".join(line[1] for line in result)
+                except Exception:
+                    pass
 
-        if text:
-            documents.append(
-                Document(
-                    page_content=text,
-                    metadata={"source": str(path), "page": page_num},
+            if text:
+                documents.append(
+                    Document(
+                        page_content=text,
+                        metadata={"source": str(path), "page": page_num},
+                    )
                 )
-            )
 
-    return documents
+        return documents
+
+    except Exception:
+        # fitz 처리 실패 시 일반 PyPDFLoader로 fallback
+        return PyPDFLoader(str(path)).load()
 
 
 def load_and_split_pdfs(folder_path: str) -> List[Document]:
