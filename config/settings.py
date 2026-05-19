@@ -143,7 +143,7 @@ GEMINI_AUX_MODEL = _gemini_aux if _gemini_aux else "gemini-2.5-flash"
 OPENAI_MODEL = _env("OPENAI_MODEL", "gpt-4o")
 TRANSLATE_MODEL = _env("MEDICAL_RAG_TRANSLATE_MODEL", "gpt-4o-mini")
 RAGAS_LLM_MODEL = _env("MEDICAL_RAG_RAGAS_LLM_MODEL", "gpt-4o-mini")
-CLASSIFIER_LLM_MODEL = _env("MEDICAL_RAG_CLASSIFIER_MODEL", "gpt-4o-mini")
+CLASSIFIER_LLM_MODEL = _env("MEDICAL_RAG_CLASSIFIER_MODEL", "gpt-4o")
 
 # Self-Correction Loop 제어
 MAX_LOOPS = _env_int("MEDICAL_RAG_MAX_LOOPS", 3)

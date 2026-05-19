@@ -2,21 +2,40 @@ from typing import TypedDict, List
 
 
 class GraphState(TypedDict):
-    request_id: str                    # 워크플로우 전체를 관통하는 고유 ID (UUID)
+    # ── 요청 식별 ──────────────────────────────────────────────────────────────
+    request_id: str
     question: str
     user_level: str
     queries: List[str]
     context: List[str]
-    context_sources: List[str]        # 검색된 청크의 원본 메타데이터 (파일명#페이지 or 소스명)
+    context_sources: List[str]
     answer: str
-    critic_score: float               # Faithfulness (주 게이트, 0–1)
-    answer_relevance_score: float     # Answer Relevance (역 질문 기반)
-    context_precision_score: float    # Context Precision (청크 유효성)
-    hallucination_flags: List[str]    # 할루시네이션·미지지 주장 목록
-    search_tier: int                  # 0=VectorDB, 1=LLM 학습데이터, 2=웹검색
+
+    # ── RAGAS 평가 결과 ────────────────────────────────────────────────────────
+    critic_score: float               # Faithfulness (α=0.4)
+    answer_relevance_score: float     # Answer Relevance (α=0.4)
+    context_precision_score: float    # Context Precision (α=0.2)
+    hallucination_flags: List[str]
+    critic_feedback: str
+
+    # ── 티어 및 루프 ───────────────────────────────────────────────────────────
+    search_tier: int                  # 현재 검색 티어 (0/1/2)
+    loop_count: int                   # 현재 티어 내 재시도 횟수
+    tier_path: str                    # 에스컬레이션 경로: "0" / "0→1" / "0→1→2"
+    self_correction_count: int        # Tier 0 자가 교정 누적 횟수
+    eval_count: int                   # critic 평가 전체 누적 횟수 (루프 번호 추적용)
+
+    # ── 시스템 정보 ────────────────────────────────────────────────────────────
     llm_provider: str
-    loop_count: int
+    workflow_start_time: float        # time.time() 워크플로우 시작 시각
     log: List[str]
+
+    # ── Ablation Study 메타데이터 ──────────────────────────────────────────────
+    ablation_condition: str           # "A"~"E", ""=일반 운영
+    query_index: int                  # STQS-40 질문 번호 (1-40), 0=일반 운영
+    disease: str                      # 질환명
+    query_level_label: str            # "P"/"C" 정답 레이블, ""=일반 운영
+    expected_tier: int                # STQS-40 예상 티어 (0/1/2), -1=해당없음
 
 
 TIER_LABELS = {0: "VectorDB(FAISS)", 1: "LLM 학습데이터", 2: "웹검색(DuckDuckGo)"}

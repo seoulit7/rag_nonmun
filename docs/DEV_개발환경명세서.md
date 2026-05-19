@@ -1,15 +1,15 @@
 # 개발 환경 명세서 (Development Environment Specification)
 
 **프로젝트명**: 의료 정보 자기교정 RAG 시스템  
-**문서버전**: v1.0  
-**작성일**: 2026-04-12  
+**문서버전**: v3.0  
+**작성일**: 2026-05-16  
 **작성자**: 연구자
 
 ---
 
 ## 1. 개발 환경 개요
 
-본 시스템은 Python 기반의 LLM 응용 시스템으로, LangGraph 워크플로우, FAISS 벡터 검색, RAGAS 자동 평가, Streamlit UI를 핵심 기술 스택으로 한다. 외부 LLM API(OpenAI/Gemini)와 Supabase PostgreSQL을 클라우드 서비스로 활용한다.
+본 시스템은 Python 기반의 LLM 응용 시스템으로, LangGraph 워크플로우, FAISS 벡터 검색, RAGAS 자동 평가, Flesch-Kincaid Grade Level 가독성 측정, Streamlit UI를 핵심 기술 스택으로 한다. 외부 LLM API(OpenAI/Gemini)와 Supabase PostgreSQL을 클라우드 서비스로 활용한다.
 
 ---
 
@@ -76,7 +76,7 @@
 |--------|------|------|
 | `ragas` | 0.4.3 | RAGAS 공식 평가 프레임워크 (Faithfulness / AR / CP) |
 | `faiss-cpu` | 1.13.2 | Facebook AI 유사도 검색 (CPU 버전) |
-| `sentence-transformers` | 3.4.1 | all-MiniLM-L6-v2 임베딩 모델 |
+| `sentence-transformers` | 3.4.1 | **BAAI/bge-base-en-v1.5** 임베딩 모델 (768차원) |
 | `huggingface-hub` | 0.36.2 | HuggingFace 모델 다운로드 |
 | `torch` | 2.2.0 | PyTorch (sentence-transformers 의존성) |
 | `numpy` | 1.26.4 | 수치 연산 (벡터 처리) |
@@ -107,8 +107,8 @@
 | 패키지 | 버전 | 용도 |
 |--------|------|------|
 | `pandas` | 2.3.3 | 감사 로그 데이터 처리 및 집계 |
-| `matplotlib` | 3.10.8 | 정적 차트 렌더링 (가설 시각화) |
-| `seaborn` | 0.13.2 | 통계 시각화 (KDE 분포, 산점도 등) |
+| `matplotlib` | 3.10.8 | 정적 차트 렌더링 (영어 텍스트 전용 — 폰트 렌더링 안정성) |
+| `seaborn` | 0.13.2 | 통계 시각화 (박스플롯, 막대차트 등) |
 | `scipy` | 1.17.1 | KDE 분포 계산 (`gaussian_kde`) |
 
 ---
@@ -130,13 +130,15 @@
 
 | 서비스 | 유형 | 용도 |
 |--------|------|------|
-| **Supabase** | PostgreSQL (클라우드) | 감사 로그(`rag_audit_log`) 저장 및 대시보드 조회 |
+| **Supabase** | PostgreSQL (클라우드) | 감사 로그(`rag_audit_log`) 저장 및 대시보드 조회. N+1행 설계, fk_grade 컬럼 포함 |
 
 ### 5.3 임베딩 모델
 
-| 모델 | 다운로드 경로 | 용도 |
-|------|--------------|------|
-| `sentence-transformers/all-MiniLM-L6-v2` | HuggingFace Hub | PDF 청크 및 쿼리 벡터화 |
+| 모델 | 차원 | 다운로드 경로 | 용도 |
+|------|------|--------------|------|
+| `BAAI/bge-base-en-v1.5` | 768 | HuggingFace Hub | PDF 청크 및 쿼리 벡터화 (코사인 유사도) |
+
+> `config/settings.py`의 기본값은 `sentence-transformers/all-MiniLM-L6-v2`이지만, `.env`의 `MEDICAL_RAG_EMBEDDING_MODEL`로 재정의한다. 현재 배포는 BAAI/bge-base-en-v1.5를 사용하며, 이 모델로 빌드된 FAISS 인덱스가 `db/msd_faiss.index/`에 커밋되어 있다.
 
 ---
 
@@ -164,7 +166,7 @@ MEDICAL_RAG_DATA_DIR=data
 MEDICAL_RAG_INDEX_PATH=db/msd_faiss.index
 
 # ── 임베딩 모델 ──────────────────────────────
-MEDICAL_RAG_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+MEDICAL_RAG_EMBEDDING_MODEL=sentence-transformers/BAAI/bge-base-en-v1.5
 
 # ── Self-Corrective Loop 임계값 ──────────────
 MEDICAL_RAG_FAITHFULNESS_THRESHOLD=0.8
@@ -203,7 +205,10 @@ MEDICAL_RAG_LOG_LEVEL=INFO
 ```
 rag_nonmun/
 ├── data/          # MSD Manual PDF 파일 배치
-└── db/            # FAISS 인덱스 자동 생성 (최초 실행 시)
+└── db/            # FAISS 인덱스 (msd_faiss.index/ 폴더로 저장)
+    └── msd_faiss.index/
+        ├── index.faiss   # FAISS 벡터 인덱스 바이너리
+        └── index.pkl     # 청크 텍스트 및 출처 메타데이터
 ```
 
 ---
@@ -228,15 +233,23 @@ cp .env.example .env
 # OPENAI_API_KEY, SUPABASE_DB_URL 필수 입력
 ```
 
-### 7.3 데이터 준비
+### 7.3 Supabase 테이블 생성
+
+```sql
+-- DB 설계서의 CREATE TABLE 명령문 실행 (fk_grade 컬럼 포함)
+-- docs/DB_데이터베이스설계서.md 섹션 3.1 참조
+```
+
+### 7.4 데이터 준비
 
 ```
 1. MSD Manual PDF 파일을 data/ 폴더에 배치
-2. 앱 최초 실행 시 FAISS 인덱스 자동 생성 (db/msd_faiss.index)
-   또는 사이드바 "인덱스 전체 재빌드" 버튼으로 수동 빌드
+2. 사이드바 "인덱스 전체 재빌드" 버튼으로 FAISS 인덱스 빌드
+   또는 BAAI/bge-base-en-v1.5로 빌드된 기존 인덱스를 db/ 폴더에 배치
+   (앱 시작 시 기존 인덱스가 있으면 로드만 수행, 자동 재빌드 없음)
 ```
 
-### 7.4 앱 실행
+### 7.5 앱 실행
 
 ```bash
 # Streamlit 직접 실행
@@ -244,6 +257,13 @@ streamlit run app.py
 
 # launch.py 스크립트 사용
 python launch.py
+```
+
+### 7.6 Ablation Study 일괄 실험
+
+```bash
+# Jupyter Notebook으로 실행 (5조건 × 40질문 = 200건 자동 실험)
+jupyter notebook main.ipynb
 ```
 
 ---
@@ -256,29 +276,35 @@ python launch.py
 | **버전관리** | Git | 소스 코드 관리 |
 | **패키지관리** | pip / Poetry | 의존성 관리 |
 | **DB 클라이언트** | Supabase Dashboard | 감사 로그 조회 및 관리 |
+| **실험 환경** | Jupyter Notebook | Ablation Study 일괄 실험 (main.ipynb) |
 
 ---
 
 ## 9. 기술 스택 요약
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                   기술 스택 요약                      │
-├──────────────┬──────────────────────────────────────┤
-│ 언어         │ Python 3.11.9                        │
-│ UI           │ Streamlit 1.55.0                     │
-│ 워크플로우   │ LangGraph 0.6.11                     │
-│ LLM          │ OpenAI gpt-4o / Gemini 2.5-pro       │
-│ LLM 프레임워크│ LangChain 0.3.x                     │
-│ 임베딩       │ sentence-transformers/all-MiniLM-L6-v2│
-│ 벡터DB       │ FAISS 1.13.2 (CPU)                  │
-│ 평가         │ RAGAS 0.4.3                          │
-│ PDF 처리     │ PyMuPDF 1.27.2 + RapidOCR 1.4.4     │
-│ 웹검색       │ DuckDuckGo Search 8.1.1              │
-│ 데이터베이스 │ Supabase PostgreSQL (psycopg2 2.9.11)│
-│ 시각화       │ Matplotlib 3.10 / Seaborn 0.13       │
-│ 딥러닝       │ PyTorch 2.2.0 (CPU)                 │
-└──────────────┴──────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│                   기술 스택 요약                           │
+├──────────────┬──────────────────────────────────────────┤
+│ 언어         │ Python 3.11.9                            │
+│ UI           │ Streamlit 1.55.0                         │
+│ 워크플로우   │ LangGraph 0.6.11                         │
+│ LLM          │ OpenAI gpt-4o / Gemini 2.5-pro           │
+│ LLM 프레임워크│ LangChain 0.3.x                         │
+│ 임베딩       │ BAAI/bge-base-en-v1.5 (768차원)          │
+│ 벡터DB       │ FAISS 1.13.2 (CPU, 코사인 유사도)        │
+│ 평가 (품질)  │ RAGAS 0.4.3 (F / AR / CP / Q_total)      │
+│ 평가 (가독성)│ Flesch-Kincaid Grade Level               │
+│              │   (Consumer ≤9 / Professional ≥12)       │
+│ PDF 처리     │ PyMuPDF 1.27.2 + RapidOCR 1.4.4         │
+│ 웹검색       │ DuckDuckGo Search 8.1.1                  │
+│ 데이터베이스 │ Supabase PostgreSQL (psycopg2 2.9.11)    │
+│              │   N+1행 설계 / fk_grade 컬럼 포함         │
+│ 시각화       │ Matplotlib 3.10 / Seaborn 0.13           │
+│              │   (matplotlib: 영어 텍스트 전용)           │
+│ 딥러닝       │ PyTorch 2.2.0 (CPU)                     │
+│ 실험 환경    │ Jupyter Notebook (Ablation Study)        │
+└──────────────┴──────────────────────────────────────────┘
 ```
 
 ---

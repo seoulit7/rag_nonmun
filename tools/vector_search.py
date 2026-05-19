@@ -233,6 +233,79 @@ def rebuild_full_index(
     return len(pdf_paths), len(all_docs)
 
 
+def add_pdf_paths_to_index(
+    pdf_paths: List[str],
+    index_path: str = None,
+    on_progress: Optional[Callable[[int, str], None]] = None,
+) -> tuple:
+    """로컬 파일 경로 목록을 받아 기존 FAISS 인덱스에 증분 추가한다.
+
+    Jupyter 등 비-Streamlit 환경에서 data 폴더에 직접 넣은 PDF를
+    인덱싱할 때 사용한다.
+
+    Args:
+        pdf_paths: 추가할 PDF 파일의 절대/상대 경로 목록
+        index_path: FAISS 인덱스 경로 (기본값: settings.INDEX_PATH)
+        on_progress: (percent: int, message: str) 진행 콜백
+
+    Returns:
+        (처리된 PDF 수, 추가된 청크 수)
+    """
+    global _db
+
+    index_path = index_path or settings.INDEX_PATH
+
+    def _notify(pct: int, msg: str) -> None:
+        if on_progress:
+            on_progress(pct, msg)
+        else:
+            print(f"[{pct:3d}%] {msg}")
+
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=settings.CHUNK_MAX_CHARS,
+        chunk_overlap=settings.CHUNK_OVERLAP,
+    )
+
+    def _is_useful_chunk(doc) -> bool:
+        text = doc.page_content.strip()
+        if len(text) < 50:
+            return False
+        if text.startswith("http://") or text.startswith("https://"):
+            return False
+        return True
+
+    _notify(5, f"총 {len(pdf_paths)}개 PDF 로드 및 청크 분할 중...")
+    new_docs = []
+    for i, path in enumerate(pdf_paths):
+        raw = load_pdf_docs(str(path))
+        chunks = splitter.split_documents(raw)
+        useful = [c for c in chunks if _is_useful_chunk(c)]
+        new_docs.extend(useful)
+        pct = 5 + int((i + 1) / len(pdf_paths) * 50)
+        _notify(pct, f"[{i+1}/{len(pdf_paths)}] {Path(path).name} → {len(useful)}청크")
+
+    _notify(57, f"총 {len(new_docs)}개 청크 임베딩 중...")
+    new_index = build_faiss_db(new_docs)
+    _notify(88, "기존 인덱스에 병합 중...")
+
+    index_path_obj = Path(index_path)
+    if _db is not None:
+        _db.merge_from(new_index)
+    elif index_path_obj.exists():
+        _db = load_faiss_db(index_path)
+        _db.merge_from(new_index)
+    else:
+        _db = new_index
+
+    _notify(95, "인덱스 저장 중...")
+    save_faiss_db(_db, index_path)
+    _notify(100, f"완료! {len(pdf_paths)}개 PDF, {len(new_docs)}개 청크 추가됨.")
+
+    return len(pdf_paths), len(new_docs)
+
+
 @tool
 def search_msd_manual(query: str) -> str:
     """MSD 매뉴얼 FAISS 벡터 DB에서 관련 의료 정보를 검색합니다.

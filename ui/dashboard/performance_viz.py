@@ -1,21 +1,22 @@
-"""RAG Performance Visualization Dashboard.
+"""Ablation Study Performance Visualization Dashboard.
 
-Four key hypothesis visualizations for PhD dissertation:
-  1. Self-Correction Effect (loop_count vs Faithfulness)
-  2. Intelligent Escalation Validity (tier_id vs Answer Relevance Box Plot)
-  3. Retrieval Precision vs Answer Relevance Correlation (CP vs AR Scatter)
-  4. User-Level Personalization (user_level Grouped Bar)
+PDF 테스트 결과서 기반 7개 시각화:
+  1. RAGAS 메트릭 비교 (조건별 F / AR / CP)
+  2. 환각 감소 효과
+  3. 에스컬레이션 패턴 분석 (Tier 분포)
+  4. 수준 분류기 성능
+  5. 자가 교정 루프 수렴
+  6. 구성 요소 기여도 (Δk)
+  7. 계산 효율성 (처리 시간)
 """
 from __future__ import annotations
 
-import warnings
 import logging
 
 import matplotlib
-matplotlib.use("Agg")  # Prevent GUI backend conflict in Streamlit
+matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
-import matplotlib.font_manager as fm
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -23,27 +24,52 @@ import streamlit as st
 
 logger = logging.getLogger(__name__)
 
-# ── Font Setup ────────────────────────────────────────────────────────────────
-def _setup_font() -> None:
-    matplotlib.rcParams["font.family"] = "DejaVu Sans"
-    matplotlib.rcParams["axes.unicode_minus"] = False
+# ── 상수 ───────────────────────────────────────────────────────────────────────
+_COND_ORDER  = ["A", "B", "C", "D", "E"]
+_COND_LABELS = {
+    "A": "A — Full System",
+    "B": "B — No Self-Correction",
+    "C": "C — No Multi-Tier",
+    "D": "D — No Level Classifier",
+    "E": "E — Baseline",
+}
+_COND_SHORT = {
+    "A": "Full\nSystem",
+    "B": "No\nSelf-Corr",
+    "C": "No\nMulti-Tier",
+    "D": "No\nLevel-Cls",
+    "E": "Baseline",
+}
+_COND_COLORS = {
+    "A": "#2ecc71",
+    "B": "#e67e22",
+    "C": "#e74c3c",
+    "D": "#9b59b6",
+    "E": "#95a5a6",
+}
+_THRESHOLD    = 0.80
+_AR_THRESHOLD = 0.80
+
+matplotlib.rcParams["font.family"] = "DejaVu Sans"
+matplotlib.rcParams["axes.unicode_minus"] = False
 
 
-# ── Data Loading ──────────────────────────────────────────────────────────────
+# ── 데이터 로드 ────────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def _load_data() -> pd.DataFrame:
-    """Load rag_audit_log into a DataFrame (5-min cache)."""
     import psycopg2
     import config.settings as s
-
     sql = """
         SELECT
-            request_id, user_level, tier_id, loop_count,
-            ragas_f, ragas_ar, ragas_cp,
+            request_id, ablation_condition, user_level, query_level_label,
+            final_tier, loop_number, is_final, self_correction_count,
+            ragas_f, ragas_ar, ragas_cp, q_total,
+            hallucination_detected, hallucination_count,
             is_escalated, is_fallback,
-            retrieved_doc_count, execution_time_ms, created_at
+            execution_time_ms, fk_grade, created_at
         FROM public.rag_audit_log
-        ORDER BY created_at
+        WHERE ablation_condition IS NOT NULL
+        ORDER BY created_at, loop_number
     """
     try:
         conn = psycopg2.connect(s.SUPABASE_DB_URL)
@@ -53,28 +79,25 @@ def _load_data() -> pd.DataFrame:
         logger.error("Data load failed: %s", e)
         return pd.DataFrame()
 
-    for col in ["ragas_f", "ragas_ar", "ragas_cp"]:
+    for col in ["ragas_f", "ragas_ar", "ragas_cp", "q_total", "fk_grade"]:
         df[col] = pd.to_numeric(df[col], errors="coerce")
-    df["loop_count"]   = df["loop_count"].fillna(0).astype(int)
-    df["tier_id"]      = df["tier_id"].fillna(0).astype(int)
-    df["is_escalated"] = df["is_escalated"].fillna(False).astype(bool)
-    df["is_fallback"]  = df["is_fallback"].fillna(False).astype(bool)
+    df["loop_number"]            = df["loop_number"].fillna(1).astype(int)
+    df["self_correction_count"]  = df["self_correction_count"].fillna(0).astype(int)
+    df["final_tier"]             = df["final_tier"].fillna(0).astype(int)
+    df["is_final"]               = df["is_final"].fillna(False).astype(bool)
+    df["is_escalated"]           = df["is_escalated"].fillna(False).astype(bool)
+    df["is_fallback"]            = df["is_fallback"].fillna(False).astype(bool)
+    df["hallucination_detected"] = df["hallucination_detected"].fillna(False).astype(bool)
+    df["hallucination_count"]    = df["hallucination_count"].fillna(0).astype(int)
     return df
 
 
-# ── Common Helpers ────────────────────────────────────────────────────────────
-_THRESHOLD    = 0.80   # F, CP threshold
-_AR_THRESHOLD = 0.70   # AR threshold (settings: MEDICAL_RAG_AR_THRESHOLD)
-_LEVEL_COLORS = {"Professional": "#2980b9", "Consumer": "#e67e22"}
+# ── 공통 헬퍼 ─────────────────────────────────────────────────────────────────
+def _fig(w=10, h=5.5):
+    sns.set_theme(style="whitegrid", font_scale=1.05)
+    return plt.subplots(figsize=(w, h), dpi=150)
 
-
-def _fig(w: float = 8, h: float = 5) -> tuple[plt.Figure, plt.Axes]:
-    sns.set_theme(style="whitegrid", font_scale=1.1)
-    fig, ax = plt.subplots(figsize=(w, h), dpi=150)
-    return fig, ax
-
-
-def _save_buf(fig: plt.Figure):
+def _savebuf(fig):
     import io
     buf = io.BytesIO()
     fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
@@ -82,625 +105,717 @@ def _save_buf(fig: plt.Figure):
     plt.close(fig)
     return buf
 
+def _final(df):
+    return df[df["is_final"]].copy()
 
-# ── Hypothesis 1: Self-Correction Effect ─────────────────────────────────────
-def _plot_self_correction(df: pd.DataFrame):
-    """Line plot: loop_count vs mean Faithfulness with 95% CI."""
-    subset = df[df["ragas_f"].notna()].copy()
-    if subset.empty:
-        return None
-
-    grp = (
-        subset.groupby("loop_count")["ragas_f"]
-        .agg(["mean", "std", "count"])
-        .reset_index()
-    )
-    grp["ci95"] = 1.96 * grp["std"] / np.sqrt(grp["count"])
-
-    fig, ax = _fig(7, 5)
-
-    ax.plot(grp["loop_count"], grp["mean"],
-            marker="o", color="#2980b9", linewidth=2.5, markersize=9,
-            zorder=3, label="Mean Faithfulness")
-    ax.fill_between(
-        grp["loop_count"],
-        grp["mean"] - grp["ci95"],
-        grp["mean"] + grp["ci95"],
-        alpha=0.18, color="#2980b9", label="95% Confidence Interval"
-    )
-    for _, row in grp.iterrows():
-        ax.annotate(
-            f"{row['mean']:.3f}",
-            (row["loop_count"], row["mean"]),
-            textcoords="offset points", xytext=(0, 12),
-            ha="center", fontsize=10, fontweight="bold", color="#2c3e50"
-        )
-
-    ax.axhline(_THRESHOLD, color="#e74c3c", linestyle="--",
-               linewidth=1.5, alpha=0.8, label=f"Threshold ({_THRESHOLD})")
-
-    ax.set_title("Hypothesis 1: Faithfulness Improvement via Self-Correction Loop",
-                 fontsize=13, fontweight="bold", pad=14)
-    ax.set_xlabel("Self-Correction Loop Count", fontsize=11)
-    ax.set_ylabel("Mean Faithfulness Score", fontsize=11)
-    ax.set_xticks(grp["loop_count"].tolist())
-    ax.set_ylim(0.5, 1.05)
-    ax.legend(fontsize=10)
-    ax.grid(True, alpha=0.4)
-    fig.tight_layout()
-    return _save_buf(fig)
+def _present_conds(df):
+    fin = _final(df)
+    return [c for c in _COND_ORDER if c in fin["ablation_condition"].values]
 
 
-# ── Immediate Escalation Analysis ────────────────────────────────────────────
-# Condition 1: AR < 0.3  → no relevant content in DB at all (AR alone)
-# Condition 2: F < 0.3 AND CP < 0.2 → retrieval completely off-target (both)
-_IMM_AR_THR = 0.3   # CRITICAL_AR_THRESHOLD
-_IMM_F_THR  = 0.3   # CRITICAL_F_THRESHOLD
-_IMM_CP_THR = 0.2   # CRITICAL_CP_THRESHOLD
+# ══════════════════════════════════════════════════════════════════════════════
+# 1. RAGAS 메트릭 비교
+# ══════════════════════════════════════════════════════════════════════════════
+def _plot_ragas_comparison(df):
+    fin   = _final(df)
+    conds = _present_conds(df)
+    metrics = [
+        ("ragas_f",  "Faithfulness (F)",      "#2980b9"),
+        ("ragas_ar", "Answer Relevance (AR)", "#e67e22"),
+        ("ragas_cp", "Context Precision (CP)","#27ae60"),
+    ]
+    x     = np.arange(len(conds))
+    width = 0.22
+    offsets = [-width, 0, width]
 
-
-def _plot_ar_escalation_zone(df: pd.DataFrame):
-    """AR Escalation Zone: AR value distribution with escalation threshold line.
-
-    AR is independent of F — shows how AR alone triggers immediate escalation.
-    Uses strip plot + KDE to show full distribution against the 0.3 threshold.
-    """
-    subset = df[df["ragas_ar"].notna()].copy()
-    if subset.empty:
-        return None
-
-    fig, ax = _fig(9, 5)
-
-    ar_vals  = subset["ragas_ar"].values
-    esc_vals = subset[subset["is_escalated"] & (subset["ragas_ar"] < _IMM_AR_THR)]["ragas_ar"].values
-    norm_vals = subset[~(subset["is_escalated"] & (subset["ragas_ar"] < _IMM_AR_THR))]["ragas_ar"].values
-
-    # KDE curve
-    from scipy.stats import gaussian_kde
-    xs = np.linspace(0, 1.05, 300)
-    if len(ar_vals) > 2:
-        kde = gaussian_kde(ar_vals, bw_method=0.25)
-        ys  = kde(xs)
-        ax.plot(xs, ys, color="#2980b9", linewidth=2.2, label="AR Distribution (KDE)", zorder=3)
-        ax.fill_between(xs, ys, where=(xs < _IMM_AR_THR),
-                        color="#e74c3c", alpha=0.18, label="Escalation Zone (AR < {})".format(_IMM_AR_THR))
-        ax.fill_between(xs, ys, where=(xs >= _IMM_AR_THR),
-                        color="#2980b9", alpha=0.10)
-
-    # Strip of individual points on x-axis
-    y_jitter = np.random.default_rng(42).uniform(-0.003, 0.003, len(norm_vals))
-    ax.scatter(norm_vals, y_jitter, color="#2980b9", alpha=0.5, s=40,
-               edgecolors="white", linewidths=0.4, zorder=4, label="Normal records")
-    if len(esc_vals):
-        y_esc = np.random.default_rng(42).uniform(-0.003, 0.003, len(esc_vals))
-        ax.scatter(esc_vals, y_esc, marker="*", color="#e74c3c", s=220,
-                   edgecolors="#922b21", linewidths=0.8, zorder=5,
-                   label="Immediate Escalation — AR (★)")
-
-    # Threshold lines
-    ax.axvline(_IMM_AR_THR, color="#e74c3c", linestyle="--", linewidth=2.0,
-               label=f"Escalation Threshold (AR = {_IMM_AR_THR})")
-    ax.axvline(_THRESHOLD, color="#95a5a6", linestyle=":", linewidth=1.3, alpha=0.7,
-               label=f"Success Threshold (AR = {_THRESHOLD})")
-
-    # Mean annotation
-    mean_ar = ar_vals.mean()
-    ax.axvline(mean_ar, color="#27ae60", linestyle="-.", linewidth=1.5, alpha=0.8,
-               label=f"Mean AR = {mean_ar:.3f}")
-
-    ax.set_title("Immediate Escalation Zone (AR-Based): Answer Relevance Distribution",
-                 fontsize=13, fontweight="bold", pad=14)
-    ax.set_xlabel("Answer Relevance (AR)", fontsize=11)
-    ax.set_ylabel("Density", fontsize=11)
-    ax.set_xlim(0.0, 1.05)
-    ax.legend(fontsize=9.5, loc="upper left")
-    ax.grid(True, axis="x", alpha=0.3)
-    fig.tight_layout()
-    return _save_buf(fig)
-
-
-def _plot_decision_zone(df: pd.DataFrame):
-    """Viz 1: Decision Zone Scatter — CP vs F with Immediate Escalation Zone highlighted."""
-    subset = df[df["ragas_f"].notna() & df["ragas_cp"].notna()].copy()
-    if subset.empty:
-        return None
-
-    fig, ax = _fig(8, 6)
-
-    # Immediate Escalation Zone shading
-    ax.axhspan(0, _IMM_F_THR,  xmin=0, xmax=1, alpha=0.0)   # reset
-    ax.fill_between([0, _IMM_CP_THR], [0, 0], [_IMM_F_THR, _IMM_F_THR],
-                    color="#e74c3c", alpha=0.15, zorder=1)
-    ax.text(0.01, _IMM_F_THR * 0.45,
-            "Immediate\nEscalation Zone\n(CP<{:.1f} & F<{:.1f})".format(_IMM_CP_THR, _IMM_F_THR),
-            fontsize=8.5, color="#c0392b", fontweight="bold", va="center")
-
-    # Normal points
-    normal = subset[~(subset["is_escalated"] & (subset["ragas_cp"] < _IMM_CP_THR) & (subset["ragas_f"] < _IMM_F_THR))]
-    ax.scatter(normal["ragas_cp"], normal["ragas_f"],
-               color="#2980b9", alpha=0.55, s=60, edgecolors="white",
-               linewidths=0.6, label="Normal / Self-Corrected", zorder=3)
-
-    # Immediate escalation points
-    esc = subset[subset["is_escalated"] & (subset["ragas_cp"] < _IMM_CP_THR) & (subset["ragas_f"] < _IMM_F_THR)]
-    if not esc.empty:
-        ax.scatter(esc["ragas_cp"], esc["ragas_f"],
-                   marker="*", color="#e74c3c", s=260, edgecolors="#922b21",
-                   linewidths=0.8, label="Immediate Escalation (★)", zorder=5)
-
-    # Threshold lines
-    ax.axvline(_IMM_CP_THR, color="#e74c3c", linestyle="--", linewidth=1.3, alpha=0.7)
-    ax.axhline(_IMM_F_THR,  color="#e74c3c", linestyle="--", linewidth=1.3, alpha=0.7)
-    ax.axvline(_THRESHOLD,  color="#95a5a6", linestyle=":", linewidth=1.1, alpha=0.6)
-    ax.axhline(_THRESHOLD,  color="#95a5a6", linestyle=":", linewidth=1.1, alpha=0.6)
-    ax.text(_THRESHOLD + 0.01, 0.02, f"F={_THRESHOLD}", color="#95a5a6", fontsize=8)
-    ax.text(0.01, _THRESHOLD + 0.01, f"CP={_THRESHOLD}", color="#95a5a6", fontsize=8)
-
-    ax.set_title("Escalation Decision Zone: Context Precision vs Faithfulness",
-                 fontsize=13, fontweight="bold", pad=14)
-    ax.set_xlabel("Context Precision (CP)", fontsize=11)
-    ax.set_ylabel("Faithfulness (F)", fontsize=11)
-    ax.set_xlim(0.0, 1.05)
-    ax.set_ylim(0.0, 1.05)
-    ax.legend(fontsize=10, loc="lower right")
-    ax.grid(True, alpha=0.3)
-    fig.tight_layout()
-    return _save_buf(fig)
-
-
-# ── Context Precision vs Answer Relevance Scatter ─────────────────────────────
-def _plot_cp_ar_scatter(df: pd.DataFrame):
-    """Scatter plot: Context Precision vs Answer Relevance with regression line."""
-    subset = df[df["ragas_cp"].notna() & df["ragas_ar"].notna()].copy()
-    if subset.empty:
-        return None
-
-    fig, ax = _fig(8, 6)
-
-    for level, grp in subset.groupby("user_level"):
-        color = _LEVEL_COLORS.get(level, "#7f8c8d")
-        ax.scatter(grp["ragas_cp"], grp["ragas_ar"],
-                   color=color, alpha=0.65, s=70,
-                   edgecolors="white", linewidths=0.6,
-                   label=level, zorder=3)
-
-    x_all = subset["ragas_cp"].values
-    y_all = subset["ragas_ar"].values
-    if len(x_all) > 2:
-        z  = np.polyfit(x_all, y_all, 1)
-        xs = np.linspace(x_all.min(), x_all.max(), 100)
-        ax.plot(xs, np.poly1d(z)(xs), color="#e74c3c", linewidth=2,
-                linestyle="--", label=f"Regression (slope={z[0]:.3f})", zorder=4)
-        corr = np.corrcoef(x_all, y_all)[0, 1]
-        ax.text(0.05, 0.93, f"Pearson r = {corr:.3f}",
-                transform=ax.transAxes, fontsize=11,
-                bbox=dict(boxstyle="round,pad=0.3", facecolor="#ecf0f1", alpha=0.85))
-
-    ax.axhline(_THRESHOLD, color="#95a5a6", linestyle=":", linewidth=1.2, alpha=0.7)
-    ax.axvline(_THRESHOLD, color="#95a5a6", linestyle=":", linewidth=1.2, alpha=0.7)
-    ax.text(_THRESHOLD + 0.005, 0.32, f"CP={_THRESHOLD}", color="#95a5a6", fontsize=8.5)
-    ax.text(0.32, _THRESHOLD + 0.008, f"AR={_THRESHOLD}", color="#95a5a6", fontsize=8.5)
-
-    ax.set_title("Retrieval Precision (CP) vs Answer Relevance (AR) Correlation",
-                 fontsize=13, fontweight="bold", pad=14)
-    ax.set_xlabel("Context Precision (CP)", fontsize=11)
-    ax.set_ylabel("Answer Relevance (AR)", fontsize=11)
-    ax.set_xlim(0.3, 1.05)
-    ax.set_ylim(0.3, 1.05)
-    ax.legend(fontsize=10)
-    ax.grid(True, alpha=0.3)
-    fig.tight_layout()
-    return _save_buf(fig)
-
-
-# ── Hypothesis 3: User-Level Personalization ─────────────────────────────────
-def _plot_user_level_bar(df: pd.DataFrame):
-    """Grouped bar chart: Professional vs Consumer across F, AR, CP."""
-    subset = df[df["ragas_f"].notna()].copy()
-    if subset.empty:
-        return None
-
-    metrics       = ["ragas_f", "ragas_ar", "ragas_cp"]
-    metric_labels = ["Faithfulness (F)", "Answer Relevance (AR)", "Context Precision (CP)"]
-    levels        = ["Professional", "Consumer"]
-
-    stats: dict[str, dict] = {}
-    for lv in levels:
-        stats[lv] = {}
-        grp = subset[subset["user_level"] == lv]
-        for m in metrics:
-            vals = grp[m].dropna().values
-            mean = vals.mean() if len(vals) else 0.0
-            ci   = (vals.std() / np.sqrt(len(vals)) * 1.96) if len(vals) > 1 else 0.0
-            stats[lv][m] = {"mean": mean, "ci": ci}
-
-    x     = np.arange(len(metrics))
-    width = 0.32
-    fig, ax = _fig(9, 5.5)
-
-    for i, lv in enumerate(levels):
-        offset = (i - 0.5) * width
-        means  = [stats[lv][m]["mean"] for m in metrics]
-        cis    = [stats[lv][m]["ci"]   for m in metrics]
-        bars   = ax.bar(x + offset, means, width,
-                        label=lv, color=_LEVEL_COLORS[lv],
-                        alpha=0.85, edgecolor="white", linewidth=1.2, zorder=3)
-        ax.errorbar(x + offset, means, yerr=cis, fmt="none",
-                    color="#2c3e50", capsize=5, linewidth=1.5, zorder=4)
+    fig, ax = _fig(11, 6)
+    for i, (col, lbl, color) in enumerate(metrics):
+        means, errs = [], []
+        for c in conds:
+            vals = fin[fin["ablation_condition"] == c][col].dropna().values
+            means.append(vals.mean() if len(vals) else 0)
+            errs.append(vals.std(ddof=1) / np.sqrt(len(vals)) * 1.96 if len(vals) > 1 else 0)
+        bars = ax.bar(x + offsets[i], means, width, label=lbl,
+                      color=color, alpha=0.85, edgecolor="white", linewidth=1.2, zorder=3)
+        ax.errorbar(x + offsets[i], means, yerr=errs, fmt="none",
+                    color="#2c3e50", capsize=4, linewidth=1.3, zorder=4)
         for bar, mean in zip(bars, means):
             ax.text(bar.get_x() + bar.get_width() / 2,
-                    bar.get_height() + 0.015,
+                    bar.get_height() + 0.012,
                     f"{mean:.3f}", ha="center", va="bottom",
-                    fontsize=9.5, fontweight="bold", color="#2c3e50")
+                    fontsize=8, fontweight="bold")
 
-    ax.axhline(_THRESHOLD, color="#e74c3c", linestyle="--",
-               linewidth=1.5, alpha=0.8, label=f"Threshold ({_THRESHOLD})", zorder=2)
-
-    ax.set_title("Hypothesis 3: RAGAS Metrics by User Level (Professional vs Consumer)",
+    ax.axhline(_THRESHOLD, color="#e74c3c", linestyle="--", linewidth=1.5,
+               alpha=0.75, label=f"Threshold ({_THRESHOLD})", zorder=2)
+    ax.set_title("Table 1. RAGAS Metric Comparison — Ablation 5 Conditions (Mean ± 95% CI)",
                  fontsize=13, fontweight="bold", pad=14)
-    ax.set_xlabel("Evaluation Metric", fontsize=11)
-    ax.set_ylabel("Mean Score (95% CI)", fontsize=11)
     ax.set_xticks(x)
-    ax.set_xticklabels(metric_labels, fontsize=10)
-    ax.set_ylim(0.5, 1.12)
-    ax.legend(fontsize=10)
+    ax.set_xticklabels([_COND_SHORT[c] for c in conds], fontsize=10)
+    ax.set_ylabel("Mean Score", fontsize=11)
+    ax.set_ylim(0.45, 1.15)
+    ax.legend(fontsize=10, loc="lower right")
     ax.grid(True, axis="y", alpha=0.4)
     fig.tight_layout()
-    return _save_buf(fig)
+    return _savebuf(fig)
 
 
-# ── Multi-Tier Knowledge Hierarchy Analysis ──────────────────────────────────
+def _table_ragas(df):
+    fin = _final(df)
+    rows = []
+    for c in _COND_ORDER:
+        sub = fin[fin["ablation_condition"] == c]
+        def ms(col):
+            v = sub[col].dropna()
+            return f"{v.mean():.3f} ± {v.std(ddof=1):.3f}" if len(v) > 1 else "—"
+        rows.append({
+            "조건": _COND_LABELS.get(c, c),
+            "F (충실도)": ms("ragas_f"),
+            "AR (답변관련성)": ms("ragas_ar"),
+            "CP (컨텍스트정밀도)": ms("ragas_cp"),
+            "Q_total": ms("q_total"),
+            "건수": len(sub),
+        })
+    return pd.DataFrame(rows)
 
-def _plot_cumulative_success(df: pd.DataFrame):
-    """Viz 1: Cumulative Success Rate by Tier — Stacked Bar Chart.
 
-    Success = F >= 0.8 AND AR >= 0.8, judged per unique request_id.
-    Tier 0 only → Tier 0+1 → Tier 0+1+2 cumulative.
-    """
-    sub = df[df["ragas_f"].notna() & df["ragas_ar"].notna()].copy()
+# ══════════════════════════════════════════════════════════════════════════════
+# 2. 환각 감소 효과
+# ══════════════════════════════════════════════════════════════════════════════
+def _plot_hallucination(df):
+    fin   = _final(df)
+    conds = _present_conds(df)
+    rates = []
+    for c in conds:
+        sub = fin[fin["ablation_condition"] == c]
+        rates.append(sub["hallucination_detected"].mean() * 100 if len(sub) else 0)
+
+    baseline = rates[conds.index("E")] if "E" in conds else 0
+
+    fig, ax = _fig(9, 5.5)
+    colors = [_COND_COLORS.get(c, "#95a5a6") for c in conds]
+    bars = ax.bar([_COND_SHORT[c] for c in conds], rates,
+                  color=colors, alpha=0.85, edgecolor="white", linewidth=1.2, zorder=3)
+
+    for bar, rate, c in zip(bars, rates, conds):
+        ax.text(bar.get_x() + bar.get_width() / 2,
+                bar.get_height() + 0.5,
+                f"{rate:.1f}%", ha="center", va="bottom", fontsize=11, fontweight="bold")
+        if c != "E" and baseline > 0:
+            red = (baseline - rate) / baseline * 100
+            ax.text(bar.get_x() + bar.get_width() / 2,
+                    rate / 2,
+                    f"↓{red:.1f}%", ha="center", va="center",
+                    fontsize=9, color="white", fontweight="bold")
+
+    ax.set_title("Table 2. Hallucination Rate Comparison — Ablation 5 Conditions",
+                 fontsize=13, fontweight="bold", pad=14)
+    ax.set_ylabel("Hallucination Rate (%)", fontsize=11)
+    ax.set_ylim(0, (max(rates) if rates else 50) * 1.4)
+    ax.grid(True, axis="y", alpha=0.4)
+    fig.tight_layout()
+    return _savebuf(fig)
+
+
+def _table_hallucination(df):
+    fin = _final(df)
+    baseline_sub = fin[fin["ablation_condition"] == "E"]
+    baseline = baseline_sub["hallucination_detected"].mean() * 100 if len(baseline_sub) else 0
+    rows = []
+    for c in _COND_ORDER:
+        sub = fin[fin["ablation_condition"] == c]
+        rate = sub["hallucination_detected"].mean() * 100 if len(sub) else 0
+        red  = (baseline - rate) / baseline * 100 if baseline > 0 and c != "E" else None
+        rows.append({
+            "조건": _COND_LABELS.get(c, c),
+            "환각 비율": f"{rate:.1f}%",
+            "Baseline 대비 감소율": f"{red:.1f}%" if red is not None else "—",
+        })
+    return pd.DataFrame(rows)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 3. 에스컬레이션 패턴 (Tier 분포 — 조건 A)
+# ══════════════════════════════════════════════════════════════════════════════
+def _plot_tier_distribution(df):
+    fin = _final(df)
+    sub = fin[fin["ablation_condition"] == "A"]
     if sub.empty:
         return None
 
-    # Per request_id: best row at each tier ceiling
-    def success_at_tier(max_tier: int) -> float:
-        pool = sub[sub["tier_id"] <= max_tier]
-        # For each request, take the row with highest tier reached
-        best = pool.sort_values("tier_id").groupby("request_id").last().reset_index()
-        ok = ((best["ragas_f"] >= _THRESHOLD) & (best["ragas_ar"] >= _AR_THRESHOLD)).sum()
-        return ok / len(best) * 100 if len(best) else 0.0
+    tier_counts = sub["final_tier"].value_counts().sort_index()
+    tier_labels = {0: "Tier 0\n(VectorDB)", 1: "Tier 1\n(LLM)", 2: "Tier 2\n(Web)"}
+    labels  = [tier_labels.get(t, f"Tier {t}") for t in tier_counts.index]
+    colors  = ["#27ae60", "#f39c12", "#e74c3c"][:len(tier_counts)]
+    total   = tier_counts.sum()
 
-    stages   = ["Tier 0\n(Vector DB)", "Tier 0+1\n(+LLM)", "Tier 0+1+2\n(+Web)"]
-    rates    = [success_at_tier(0), success_at_tier(1), success_at_tier(2)]
-    gains    = [rates[0], rates[1] - rates[0], rates[2] - rates[1]]
-    colors   = ["#27ae60", "#f39c12", "#e74c3c"]
-    labels   = ["Tier 0 Success", "Gained by Tier 1", "Gained by Tier 2"]
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5.5), dpi=150)
 
-    fig, ax = _fig(8, 5.5)
+    wedges, texts, autotexts = ax1.pie(
+        tier_counts.values, labels=labels, colors=colors,
+        autopct="%1.1f%%", startangle=90,
+        textprops={"fontsize": 10},
+        wedgeprops={"edgecolor": "white", "linewidth": 2},
+    )
+    for at in autotexts:
+        at.set_fontsize(11); at.set_fontweight("bold")
+    ax1.set_title("Tier Distribution (Condition A)", fontsize=12, fontweight="bold", pad=12)
 
-    bottoms = [0, gains[0], gains[0] + gains[1]]
-    for i, (gain, color, label, bottom) in enumerate(zip(gains, colors, labels, bottoms)):
-        if gain <= 0:
-            continue
-        ax.bar(stages, [gain if j == i else 0 for j in range(3)],
-               bottom=[bottom if j == i else 0 for j in range(3)],
-               color=color, alpha=0.85, label=label,
-               edgecolor="white", linewidth=1.2, width=0.45)
+    bars = ax2.bar(labels, tier_counts.values, color=colors, alpha=0.85,
+                   edgecolor="white", linewidth=1.2)
+    for bar, cnt in zip(bars, tier_counts.values):
+        ax2.text(bar.get_x() + bar.get_width() / 2,
+                 bar.get_height() + 0.3,
+                 f"{cnt}건\n({cnt/total*100:.1f}%)",
+                 ha="center", va="bottom", fontsize=10, fontweight="bold")
+    ax2.set_title("Query Count by Tier", fontsize=12, fontweight="bold", pad=12)
+    ax2.set_ylabel("Count", fontsize=11)
+    ax2.set_ylim(0, tier_counts.max() * 1.35)
+    ax2.grid(True, axis="y", alpha=0.4)
 
-    # Cumulative rate labels on top of each bar
-    for i, (stage, rate) in enumerate(zip(stages, rates)):
-        ax.text(i, rate + 1.5, f"{rate:.1f}%",
-                ha="center", fontsize=12, fontweight="bold", color="#2c3e50")
+    fig.suptitle("Table 3. Tier Distribution — Escalation Pattern Analysis (Condition A)",
+                 fontsize=13, fontweight="bold", y=1.02)
+    fig.tight_layout()
+    return _savebuf(fig)
 
-    # Gain arrows
-    for i in range(1, 3):
-        if rates[i] > rates[i-1]:
-            ax.annotate(
-                f"+{rates[i]-rates[i-1]:.1f}%",
-                xy=(i, rates[i]), xytext=(i - 0.35, rates[i] - gains[i] / 2),
-                fontsize=9.5, color="white", fontweight="bold", ha="center"
-            )
 
-    ax.set_title("Cumulative Answer Success Rate by Knowledge Tier",
+def _table_tier_distribution(df):
+    fin = _final(df)
+    sub = fin[fin["ablation_condition"] == "A"]
+    if sub.empty:
+        return pd.DataFrame()
+
+    tier_names = {0: "Tier 0 (MSD 매뉴얼)", 1: "Tier 1 (LLM 지식)", 2: "Tier 2 (웹 검색)"}
+    pro   = sub[sub["user_level"] == "Professional"]
+    cons  = sub[sub["user_level"] == "Consumer"]
+    total = sub
+
+    n_pro  = max(len(pro),   1)
+    n_cons = max(len(cons),  1)
+    n_tot  = max(len(total), 1)
+
+    rows = []
+    for tier in sorted(sub["final_tier"].unique()):
+        cp = len(pro[pro["final_tier"]   == tier])
+        cc = len(cons[cons["final_tier"] == tier])
+        ct = len(total[total["final_tier"] == tier])
+        rows.append({
+            "티어":        tier_names.get(tier, f"Tier {tier}"),
+            "전문가 쿼리": f"{cp} ({cp/n_pro*100:.0f}%)",
+            "일반인 쿼리": f"{cc} ({cc/n_cons*100:.0f}%)",
+            "전체":        f"{ct} ({ct/n_tot*100:.0f}%)",
+        })
+    return pd.DataFrame(rows)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 4. 수준 분류기 성능
+# ══════════════════════════════════════════════════════════════════════════════
+def _compute_classifier_metrics(df):
+    sub = df[
+        df["is_final"] &
+        df["ablation_condition"].isin(["A", "B", "C"]) &
+        df["query_level_label"].notna() &
+        df["user_level"].notna()
+    ].drop_duplicates(subset=["request_id"]).copy()
+    if sub.empty:
+        return None
+
+    label_map = {"P": "Professional", "C": "Consumer"}
+    sub["expected"]  = sub["query_level_label"].map(label_map)
+    sub["predicted"] = sub["user_level"]
+    valid = sub[
+        sub["expected"].isin(["Professional", "Consumer"]) &
+        sub["predicted"].isin(["Professional", "Consumer"])
+    ]
+    if len(valid) == 0:
+        return None
+
+    y_true = (valid["expected"]  == "Professional").astype(int)
+    y_pred = (valid["predicted"] == "Professional").astype(int)
+    tp = int(((y_true == 1) & (y_pred == 1)).sum())
+    tn = int(((y_true == 0) & (y_pred == 0)).sum())
+    fp = int(((y_true == 0) & (y_pred == 1)).sum())
+    fn = int(((y_true == 1) & (y_pred == 0)).sum())
+    acc  = (tp + tn) / (tp + tn + fp + fn) if (tp+tn+fp+fn) else 0
+    prec = tp / (tp + fp) if (tp + fp) else 0
+    rec  = tp / (tp + fn) if (tp + fn) else 0
+    f1   = 2 * prec * rec / (prec + rec) if (prec + rec) else 0
+    return {"Accuracy": acc, "Precision": prec, "Recall": rec, "F1": f1,
+            "TP": tp, "TN": tn, "FP": fp, "FN": fn, "n": len(valid)}
+
+
+def _plot_classifier(m):
+    keys    = ["Accuracy", "Precision", "Recall", "F1"]
+    values  = [m[k] for k in keys]
+    colors  = ["#2980b9", "#27ae60", "#e67e22", "#9b59b6"]
+
+    fig, ax = _fig(8, 5)
+    bars = ax.bar(keys, values, color=colors, alpha=0.85,
+                  edgecolor="white", linewidth=1.2, width=0.5, zorder=3)
+    for bar, val in zip(bars, values):
+        ax.text(bar.get_x() + bar.get_width() / 2,
+                bar.get_height() + 0.008,
+                f"{val*100:.1f}%", ha="center", va="bottom",
+                fontsize=13, fontweight="bold")
+
+    ax.axhline(0.9, color="#e74c3c", linestyle="--", linewidth=1.5,
+               alpha=0.75, label="90% 기준선", zorder=2)
+    ax.set_title("Table 4. Level Classifier Performance (Conditions A / B / C)",
                  fontsize=13, fontweight="bold", pad=14)
-    ax.set_ylabel("Success Rate (F≥0.8 & AR≥0.7, %)", fontsize=11)
-    ax.set_ylim(0, 115)
-    ax.legend(fontsize=10, loc="upper left")
+    ax.set_ylabel("Score", fontsize=11)
+    ax.set_ylim(0.6, 1.12)
+    ax.legend(fontsize=10)
     ax.grid(True, axis="y", alpha=0.4)
     fig.tight_layout()
-    return _save_buf(fig)
+    return _savebuf(fig)
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# 4-b. FK Grade — 수준 분류기 간접 검증
+# ══════════════════════════════════════════════════════════════════════════════
+_FK_CONSUMER_MAX     = 9.0   # Consumer 목표: Grade ≤ 9 (고등학생 수준 이하)
+_FK_PROFESSIONAL_MIN = 12.0  # Professional 기준: Grade ≥ 12 (대학 수준)
 
 
-# ── Summary Metric Cards ──────────────────────────────────────────────────────
-def _render_summary_cards(df: pd.DataFrame) -> None:
-    # ── request 기준 집계 ──────────────────────────────────────────────────────
-    # 각 request_id에서 가장 높은 tier(최종 결과) 행만 추출
-    final = (
-        df.sort_values(["request_id", "tier_id", "loop_count"])
-          .groupby("request_id", as_index=False)
-          .last()
+def _plot_fk_grade(df):
+    fin = _final(df)
+    sub = fin[fin["fk_grade"].notna() & fin["user_level"].isin(["Professional", "Consumer"])]
+    if sub.empty:
+        return None
+
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5.5), dpi=150)
+    sns.set_theme(style="whitegrid", font_scale=1.05)
+
+    # ── 왼쪽: 박스플롯 (user_level별) ────────────────────────────────────────
+    ax1 = axes[0]
+    palette = {"Consumer": "#3498db", "Professional": "#e74c3c"}
+    sns.boxplot(
+        data=sub, x="user_level", y="fk_grade",
+        palette=palette, width=0.45, linewidth=1.5,
+        order=["Consumer", "Professional"], ax=ax1,
     )
-    total         = len(final)
-    success_mask  = (
-        (final["ragas_f"]  >= _THRESHOLD) &
-        (final["ragas_ar"] >= _AR_THRESHOLD) &
-        (final["ragas_cp"] >= _THRESHOLD)
+    ax1.axhline(_FK_CONSUMER_MAX,     color="#3498db", linestyle="--",
+                linewidth=1.4, alpha=0.8, label=f"Consumer target (≤{_FK_CONSUMER_MAX})")
+    ax1.axhline(_FK_PROFESSIONAL_MIN, color="#e74c3c", linestyle="--",
+                linewidth=1.4, alpha=0.8, label=f"Professional target (≥{_FK_PROFESSIONAL_MIN})")
+    for level, color in palette.items():
+        mean_val = sub[sub["user_level"] == level]["fk_grade"].mean()
+        if not pd.isna(mean_val):
+            ax1.text(
+                0 if level == "Consumer" else 1,
+                mean_val + 0.3,
+                f"mean={mean_val:.2f}",
+                ha="center", fontsize=10, fontweight="bold", color=color,
+            )
+    ax1.set_title("FK Grade by User Level", fontsize=12, fontweight="bold", pad=10)
+    ax1.set_xlabel("User Level", fontsize=11)
+    ax1.set_ylabel("FK Grade", fontsize=11)
+    ax1.legend(fontsize=9, loc="upper left")
+
+    # ── 오른쪽: 조건별 평균 막대 ─────────────────────────────────────────────
+    ax2 = axes[1]
+    conds = _present_conds(df)
+    levels = ["Consumer", "Professional"]
+    x     = np.arange(len(conds))
+    width = 0.32
+    for i, (level, color) in enumerate(palette.items()):
+        means = []
+        for c in conds:
+            vals = fin[
+                (fin["ablation_condition"] == c) &
+                (fin["user_level"] == level)
+            ]["fk_grade"].dropna().values
+            means.append(vals.mean() if len(vals) else 0)
+        offset = -width / 2 if i == 0 else width / 2
+        bars = ax2.bar(x + offset, means, width, label=level,
+                       color=color, alpha=0.8, edgecolor="white", linewidth=1.2)
+        for bar, val in zip(bars, means):
+            if val > 0:
+                ax2.text(bar.get_x() + bar.get_width() / 2,
+                         bar.get_height() + 0.15,
+                         f"{val:.1f}", ha="center", va="bottom",
+                         fontsize=9, fontweight="bold")
+
+    ax2.axhline(_FK_CONSUMER_MAX,     color="#3498db", linestyle="--",
+                linewidth=1.3, alpha=0.7)
+    ax2.axhline(_FK_PROFESSIONAL_MIN, color="#e74c3c", linestyle="--",
+                linewidth=1.3, alpha=0.7)
+    ax2.set_title("Mean FK Grade by Condition & Level", fontsize=12, fontweight="bold", pad=10)
+    ax2.set_xticks(x)
+    ax2.set_xticklabels([_COND_SHORT[c] for c in conds], fontsize=10)
+    ax2.set_ylabel("Mean FK Grade", fontsize=11)
+    ax2.legend(fontsize=10)
+    ax2.grid(True, axis="y", alpha=0.4)
+
+    fig.suptitle("FK Grade — Level Classifier Indirect Validation (is_final=True only)",
+                 fontsize=13, fontweight="bold", y=1.02)
+    fig.tight_layout()
+    return _savebuf(fig)
+
+
+def _table_fk_grade(df):
+    fin = _final(df)
+    rows = []
+    for c in _COND_ORDER:
+        sub = fin[fin["ablation_condition"] == c]
+        for level in ["Consumer", "Professional"]:
+            vals = sub[sub["user_level"] == level]["fk_grade"].dropna()
+            target = f"≤ {_FK_CONSUMER_MAX}" if level == "Consumer" else f"≥ {_FK_PROFESSIONAL_MIN}"
+            if len(vals) == 0:
+                rows.append({"Condition": _COND_LABELS.get(c, c), "User Level": level,
+                             "Mean FK Grade": "—", "Std Dev": "—", "Target": target,
+                             "Within Target": "—", "n": 0})
+                continue
+            mean_v = vals.mean()
+            within = (
+                (vals <= _FK_CONSUMER_MAX).mean() * 100 if level == "Consumer"
+                else (vals >= _FK_PROFESSIONAL_MIN).mean() * 100
+            )
+            rows.append({
+                "Condition":    _COND_LABELS.get(c, c),
+                "User Level":   level,
+                "Mean FK Grade": f"{mean_v:.2f}",
+                "Std Dev":      f"{vals.std(ddof=1):.2f}" if len(vals) > 1 else "—",
+                "Target":       target,
+                "Within Target": f"{within:.1f}%",
+                "n":            len(vals),
+            })
+    return pd.DataFrame(rows)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 5. 자가 교정 루프 수렴
+# ══════════════════════════════════════════════════════════════════════════════
+def _plot_loop_convergence(df):
+    sub = df[df["ablation_condition"] == "A"].copy()
+    if sub.empty:
+        return None
+
+    grp = (
+        sub[sub["q_total"].notna()]
+        .groupby("loop_number")["q_total"]
+        .agg(["mean", "std", "count"])
+        .reset_index()
     )
-    success_rate  = success_mask.mean() * 100 if total else 0.0
-    avg_f         = final["ragas_f"].mean()
-    avg_ar        = final["ragas_ar"].mean()
-    avg_cp        = final["ragas_cp"].mean()
-    # Escalation: 해당 request에서 중간 에스컬레이션이 한 번이라도 있었던 비율
-    escalated_req = df.groupby("request_id")["is_escalated"].any()
-    escalated_pct = escalated_req.mean() * 100 if total else 0.0
-    # Fallback: 최종 행이 fallback인 요청 비율
-    fallback_pct  = final["is_fallback"].mean() * 100 if total else 0.0
+    if grp.empty:
+        return None
+    grp["ci"] = 1.96 * grp["std"] / np.sqrt(grp["count"])
 
-    c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
-    c1.metric("Requests",              f"{total:,}")
-    c2.metric("Success (F≥0.8∧AR≥0.7∧CP≥0.8)", f"{success_rate:.1f}%")
-    c3.metric("Avg F",           f"{avg_f:.3f}"  if not pd.isna(avg_f)  else "—")
-    c4.metric("Avg AR",          f"{avg_ar:.3f}" if not pd.isna(avg_ar) else "—")
-    c5.metric("Avg CP",          f"{avg_cp:.3f}" if not pd.isna(avg_cp) else "—")
-    c6.metric("Escalation",      f"{escalated_pct:.1f}%")
-    c7.metric("Fallback",        f"{fallback_pct:.1f}%")
+    fig, ax = _fig(8, 5.5)
+    ax.plot(grp["loop_number"], grp["mean"],
+            marker="o", color="#2980b9", linewidth=2.5, markersize=9,
+            zorder=3, label="Mean Q_total")
+    ax.fill_between(grp["loop_number"],
+                    grp["mean"] - grp["ci"], grp["mean"] + grp["ci"],
+                    alpha=0.18, color="#2980b9", label="95% CI")
+    for _, row in grp.iterrows():
+        ax.annotate(f"{row['mean']:.3f}",
+                    (row["loop_number"], row["mean"]),
+                    textcoords="offset points", xytext=(0, 12),
+                    ha="center", fontsize=10, fontweight="bold", color="#2c3e50")
+
+    # convergence ratio (Q_total >= threshold)
+    for _, row in grp.iterrows():
+        loop_sub = sub[sub["loop_number"] == row["loop_number"]]["q_total"].dropna()
+        if len(loop_sub):
+            conv = (loop_sub >= _THRESHOLD).mean() * 100
+            ax.annotate(f"Conv. {conv:.0f}%",
+                        (row["loop_number"], row["mean"] - grp["ci"].max() - 0.04),
+                        ha="center", fontsize=8.5, color="#7f8c8d")
+
+    ax.axhline(_THRESHOLD, color="#e74c3c", linestyle="--", linewidth=1.5,
+               alpha=0.8, label=f"τ_Q = {_THRESHOLD}")
+    ax.set_title("Table 5. Self-Correction Loop Convergence — Q_total (Condition A)",
+                 fontsize=13, fontweight="bold", pad=14)
+    ax.set_xlabel("Loop Number (Evaluation Count)", fontsize=11)
+    ax.set_ylabel("Mean Q_total Score", fontsize=11)
+    ax.set_xticks(grp["loop_number"].tolist())
+    ax.set_ylim(0.45, 1.05)
+    ax.legend(fontsize=10)
+    ax.grid(True, alpha=0.4)
+    fig.tight_layout()
+    return _savebuf(fig)
 
 
-# ── Main Render ───────────────────────────────────────────────────────────────
+def _table_loop(df):
+    sub = df[df["ablation_condition"] == "A"].copy()
+    rows = []
+    for lc in sorted(sub["loop_number"].unique()):
+        vals = sub[sub["loop_number"] == lc]["q_total"].dropna().values
+        if len(vals) == 0:
+            continue
+        conv = (vals >= _THRESHOLD).mean() * 100
+        rows.append({
+            "Loop": int(lc),
+            "Mean Q_total": round(float(vals.mean()), 3),
+            "Std Dev": round(float(vals.std(ddof=1)) if len(vals) > 1 else 0, 3),
+            "Conv. Rate (τ≥0.8)": f"{conv:.1f}%",
+            "n": len(vals),
+        })
+    return pd.DataFrame(rows) if rows else pd.DataFrame()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 6. 구성 요소 기여도 (Δk)
+# ══════════════════════════════════════════════════════════════════════════════
+def _compute_contribution(df):
+    fin = _final(df)
+    metrics   = ["ragas_f", "ragas_ar", "ragas_cp", "q_total"]
+    m_labels  = ["ΔF", "ΔAR", "ΔCP", "ΔQ"]
+    ablations = [("B", "Self-Correction (SC)"), ("C", "Multi-Tier (MT)"), ("D", "Level-Classifier (LC)")]
+
+    a_vals = {}
+    for m in metrics:
+        v = fin[fin["ablation_condition"] == "A"][m].dropna().values
+        a_vals[m] = v.mean() if len(v) else None
+
+    rows = []
+    for cond, name in ablations:
+        row = {"Component": name, "Ablated Cond.": cond}
+        for m, lbl in zip(metrics, m_labels):
+            v = fin[fin["ablation_condition"] == cond][m].dropna().values
+            b = v.mean() if len(v) else None
+            row[lbl] = round(a_vals[m] - b, 4) if (a_vals[m] is not None and b is not None) else None
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def _plot_contribution(delta_df):
+    if delta_df.empty:
+        return None
+    m_labels = ["ΔF", "ΔAR", "ΔCP", "ΔQ"]
+    colors   = ["#2980b9", "#e67e22", "#27ae60", "#9b59b6"]
+    names    = delta_df["Component"].tolist()
+    x        = np.arange(len(names))
+    width    = 0.18
+    offsets  = np.linspace(-1.5 * width, 1.5 * width, 4)
+
+    fig, ax = _fig(10, 5.5)
+    for i, (lbl, color, offset) in enumerate(zip(m_labels, colors, offsets)):
+        vals = delta_df[lbl].fillna(0).tolist()
+        bars = ax.bar(x + offset, vals, width, label=lbl,
+                      color=color, alpha=0.85, edgecolor="white", linewidth=1.2)
+        for bar, val in zip(bars, delta_df[lbl].tolist()):
+            if val is not None and not pd.isna(val):
+                label_text = f"+{val:.3f}" if val >= 0 else f"{val:.3f}"
+                if val >= 0:
+                    ax.text(bar.get_x() + bar.get_width() / 2,
+                            bar.get_height() + 0.003,
+                            label_text, ha="center", va="bottom",
+                            fontsize=8, fontweight="bold")
+                else:
+                    ax.text(bar.get_x() + bar.get_width() / 2,
+                            bar.get_height() - 0.003,
+                            label_text, ha="center", va="top",
+                            fontsize=8, fontweight="bold", color="#c0392b")
+
+    ax.set_title("Table 6. Ablation Component Contribution  Δk = Full(A) − Ablated",
+                 fontsize=13, fontweight="bold", pad=14)
+    ax.set_xticks(x)
+    ax.set_xticklabels(names, fontsize=11)
+    ax.set_ylabel("Δ Metric  (higher = more contribution)", fontsize=11)
+    ax.axhline(0, color="#2c3e50", linewidth=0.8)
+    y_min = min(delta_df[m_labels].min().min() - 0.03, -0.02)
+    y_max = max(delta_df[m_labels].max().max() + 0.03, 0.22)
+    ax.set_ylim(y_min, y_max)
+    ax.legend(fontsize=10)
+    ax.grid(True, axis="y", alpha=0.4)
+    fig.tight_layout()
+    return _savebuf(fig)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 7. 계산 효율성 (처리 시간)
+# ══════════════════════════════════════════════════════════════════════════════
+def _plot_efficiency(df):
+    fin   = _final(df)
+    conds = _present_conds(df)
+    times, errs = [], []
+    for c in conds:
+        vals = fin[fin["ablation_condition"] == c]["execution_time_ms"].dropna().values / 1000
+        times.append(vals.mean() if len(vals) else 0)
+        errs.append(vals.std(ddof=1) / np.sqrt(len(vals)) * 1.96 if len(vals) > 1 else 0)
+
+    fig, ax = _fig(9, 5.5)
+    colors = [_COND_COLORS.get(c, "#95a5a6") for c in conds]
+    bars = ax.bar([_COND_SHORT[c] for c in conds], times,
+                  yerr=errs, color=colors, alpha=0.85,
+                  edgecolor="white", linewidth=1.2, capsize=5, zorder=3,
+                  error_kw={"elinewidth": 1.5, "ecolor": "#2c3e50"})
+    for bar, t in zip(bars, times):
+        ax.text(bar.get_x() + bar.get_width() / 2,
+                bar.get_height() + 0.5,
+                f"{t:.1f}s", ha="center", va="bottom",
+                fontsize=11, fontweight="bold")
+
+    ax.set_title("Table 7. Processing Time per Query — Ablation 5 Conditions",
+                 fontsize=13, fontweight="bold", pad=14)
+    ax.set_ylabel("Mean Processing Time (sec, 95% CI)", fontsize=11)
+    ax.set_ylim(0, (max(times) if times else 10) * 1.4)
+    ax.grid(True, axis="y", alpha=0.4)
+    fig.tight_layout()
+    return _savebuf(fig)
+
+
+def _table_efficiency(df):
+    fin = _final(df)
+    rows = []
+    for c in _COND_ORDER:
+        sub = fin[fin["ablation_condition"] == c]
+        t   = sub["execution_time_ms"].dropna() / 1000
+        rows.append({
+            "조건": _COND_LABELS.get(c, c),
+            "평균 처리 시간 (초)": f"{t.mean():.1f} ± {t.std(ddof=1):.1f}" if len(t) > 1 else "—",
+            "건수": len(sub),
+        })
+    return pd.DataFrame(rows)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 요약 카드
+# ══════════════════════════════════════════════════════════════════════════════
+def _render_summary_cards(df):
+    fin = _final(df)
+    cols = st.columns(5)
+    names = ["Full", "No SC", "No MT", "No LC", "Baseline"]
+    for col, c, name in zip(cols, _COND_ORDER, names):
+        sub  = fin[fin["ablation_condition"] == c]
+        avg_f = sub["ragas_f"].mean()
+        hallu = sub["hallucination_detected"].mean() * 100 if len(sub) else 0
+        col.metric(
+            label=f"[{c}] {name}",
+            value=f"F = {avg_f:.3f}" if not pd.isna(avg_f) else "—",
+            delta=f"환각 {hallu:.1f}%  |  {len(sub)}건",
+        )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 메인 렌더
+# ══════════════════════════════════════════════════════════════════════════════
 def render_performance_viz() -> None:
-    """Render the full performance visualization dashboard."""
-    _setup_font()
+    matplotlib.rcParams["font.family"] = "DejaVu Sans"
+    matplotlib.rcParams["axes.unicode_minus"] = False
 
-    st.title("RAG Performance Visualization")
-    st.caption("PhD Dissertation Analysis — based on Supabase `rag_audit_log`")
+    st.title("Ablation Study — Performance Visualization")
+    st.caption("논문 Ablation Study 결과 시각화 — Supabase `rag_audit_log` 기반 (조건 A~E)")
 
-    with st.spinner("Loading data..."):
+    with st.spinner("데이터 로딩 중..."):
         df = _load_data()
 
     if df.empty:
-        st.error("Failed to load data. Please check Supabase connection.")
+        st.error("데이터를 불러오지 못했습니다. Supabase 연결을 확인하세요.")
         return
 
-    # ── Sidebar Filters ───────────────────────────────────────────────────────
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("Visualization Filters")
-
-    if "created_at" in df.columns:
-        df["created_at"] = pd.to_datetime(df["created_at"], utc=True)
-        min_d = df["created_at"].min().date()
-        max_d = df["created_at"].max().date()
-        date_range = st.sidebar.date_input(
-            "Date Range", value=(min_d, max_d),
-            min_value=min_d, max_value=max_d,
-        )
-        if isinstance(date_range, (list, tuple)) and len(date_range) == 2:
-            import datetime, pytz
-            d_from = datetime.datetime.combine(date_range[0], datetime.time.min).replace(tzinfo=pytz.utc)
-            d_to   = datetime.datetime.combine(date_range[1], datetime.time.max).replace(tzinfo=pytz.utc)
-            df = df[(df["created_at"] >= d_from) & (df["created_at"] <= d_to)]
-
-    levels = st.sidebar.multiselect(
-        "User Level",
-        ["Professional", "Consumer"],
-        default=["Professional", "Consumer"],
-    )
-    if levels:
-        df = df[df["user_level"].isin(levels)]
-
-    if df.empty:
-        st.warning("No data found for the selected filters.")
-        return
-
-    if st.button("Refresh Data", type="secondary"):
+    if st.button("새로고침", type="secondary"):
         st.cache_data.clear()
         st.rerun()
 
-    st.markdown("---")
-
-    # ── Summary Cards ─────────────────────────────────────────────────────────
-    st.markdown("### Summary Statistics")
+    # ── 요약 카드 ──────────────────────────────────────────────────────────────
+    st.markdown("### 조건별 요약")
     _render_summary_cards(df)
-
     st.markdown("---")
 
-    # ── Hypothesis 1 ──────────────────────────────────────────────────────────
-    st.markdown("### Hypothesis 1: Self-Correction Effect on Faithfulness")
-    st.caption("Repeated self-correction loops improve Faithfulness and suppress hallucination.")
-    buf1 = _plot_self_correction(df)
-    if buf1:
-        st.image(buf1, width="stretch")
+    # ── 1. RAGAS 메트릭 비교 ──────────────────────────────────────────────────
+    st.markdown("### 1. RAGAS 메트릭 비교")
+    st.caption("조건별 Faithfulness / Answer Relevance / Context Precision 평균 ± 95% CI")
+    buf = _plot_ragas_comparison(df)
+    if buf:
+        st.image(buf, use_container_width=True)
+    st.dataframe(_table_ragas(df), hide_index=True, use_container_width=True)
+    st.markdown("---")
 
-        # CI 공식 및 대입값 표시
-        with st.expander("95% Confidence Interval — Formula & Substituted Values", expanded=True):
-            st.latex(r"CI = \bar{x} \pm 1.96 \times \dfrac{s}{\sqrt{n}}")
-            st.caption(
-                "where  **x̄** = sample mean,  **s** = sample standard deviation,  "
-                "**n** = sample size,  **1.96** = z-score for 95% confidence level"
+    # ── 2. 환각 감소 효과 ─────────────────────────────────────────────────────
+    st.markdown("### 2. 환각 감소 효과")
+    st.caption("조건별 환각 감지 비율 및 Baseline(E) 대비 감소율")
+    buf = _plot_hallucination(df)
+    if buf:
+        st.image(buf, use_container_width=True)
+    st.dataframe(_table_hallucination(df), hide_index=True, use_container_width=True)
+    st.markdown("---")
+
+    # ── 3. 에스컬레이션 패턴 ──────────────────────────────────────────────────
+    st.markdown("### 3. 에스컬레이션 패턴 분석 (Tier 분포 — 조건 A)")
+    st.caption("Full System 조건에서 Tier 0 → 1 → 2 분포")
+    buf = _plot_tier_distribution(df)
+    if buf:
+        st.image(buf, use_container_width=True)
+    else:
+        st.info("조건 A 데이터가 없습니다.")
+    tier_tbl = _table_tier_distribution(df)
+    if not tier_tbl.empty:
+        st.dataframe(tier_tbl, hide_index=True, use_container_width=True)
+    st.markdown("---")
+
+    # ── 4. 수준 분류기 성능 ───────────────────────────────────────────────────
+    st.markdown("### 4. 수준 분류기 성능 (조건 A / B / C)")
+    st.caption("query_level_label (P/C) vs user_level 비교 — Accuracy / Precision / Recall / F1")
+    m = _compute_classifier_metrics(df)
+    if m:
+        buf = _plot_classifier(m)
+        if buf:
+            st.image(buf, use_container_width=True)
+        st.dataframe(pd.DataFrame([{
+            "정확도": f"{m['Accuracy']*100:.1f}%",
+            "정밀도": f"{m['Precision']*100:.1f}%",
+            "재현율": f"{m['Recall']*100:.1f}%",
+            "F1": f"{m['F1']*100:.1f}%",
+            "TP": m["TP"], "TN": m["TN"],
+            "FP": m["FP"], "FN": m["FN"],
+            "전체 n": m["n"],
+        }]), hide_index=True, use_container_width=True)
+    else:
+        st.info("분류기 평가 데이터가 없습니다. (query_level_label 컬럼 필요)")
+    st.markdown("---")
+
+    # ── 4-b. FK Grade ─────────────────────────────────────────────────────────
+    st.markdown("### 4-b. FK Grade — Level Classifier Indirect Validation")
+    st.caption(
+        "FK Grade Level (English original, before Korean translation)  |  "
+        "Consumer target ≤ 9  |  Professional target ≥ 12  |  is_final=True only"
+    )
+    buf = _plot_fk_grade(df)
+    if buf:
+        st.image(buf, use_container_width=True)
+    else:
+        st.info("fk_grade 데이터가 없습니다. (새 질의부터 측정 시작)")
+    fk_tbl = _table_fk_grade(df)
+    if not fk_tbl.empty:
+        st.dataframe(fk_tbl, hide_index=True, use_container_width=True)
+    st.markdown("---")
+
+    # ── 5. 자가 교정 루프 수렴 ────────────────────────────────────────────────
+    st.markdown("### 5. Self-Correction Loop Convergence (Condition A)")
+    st.caption("Mean Q_total and convergence rate per loop iteration (τ_Q = 0.8)")
+    buf = _plot_loop_convergence(df)
+    if buf:
+        st.image(buf, use_container_width=True)
+    loop_tbl = _table_loop(df)
+    if not loop_tbl.empty:
+        st.dataframe(loop_tbl, hide_index=True, use_container_width=True)
+    else:
+        st.info("조건 A 데이터가 없습니다.")
+    st.markdown("---")
+
+    # ── 6. 구성 요소 기여도 ───────────────────────────────────────────────────
+    st.markdown("### 6. Component Contribution  Δk = Full(A) − Ablated")
+    st.caption("Performance drop when each component (Self-Correction / Multi-Tier / Level-Classifier) is removed")
+    delta_df = _compute_contribution(df)
+    buf = _plot_contribution(delta_df)
+    if buf:
+        st.image(buf, use_container_width=True)
+    if not delta_df.empty:
+        display_df = delta_df.copy()
+        for col in ["ΔF", "ΔAR", "ΔCP", "ΔQ"]:
+            display_df[col] = display_df[col].apply(
+                lambda v: (f"+{v:.3f}" if v >= 0 else f"{v:.3f}") if v is not None and not pd.isna(v) else "—"
             )
-            st.markdown("**Substituted values by Loop Count (Faithfulness)**")
-
-            rows = []
-            for lc, grp in df.groupby("loop_count"):
-                vals = grp["ragas_f"].dropna().values
-                if len(vals) == 0:
-                    continue
-                n    = len(vals)
-                mean = vals.mean()
-                s    = vals.std(ddof=1) if n > 1 else 0.0
-                se   = s / np.sqrt(n)
-                ci   = 1.96 * se
-                rows.append({
-                    "Loop Count": int(lc),
-                    "n": n,
-                    "x̄ (Mean)": round(mean, 4),
-                    "s (Std Dev)": round(s, 4),
-                    "s / √n (SE)": round(se, 4),
-                    "1.96 × SE": round(ci, 4),
-                    "CI Lower": round(mean - ci, 4),
-                    "CI Upper": round(mean + ci, 4),
-                })
-            st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
-    else:
-        st.info("Insufficient data.")
-
+        st.dataframe(display_df, hide_index=True, use_container_width=True)
     st.markdown("---")
 
-    st.markdown("---")
-
-    # ── Hypothesis 2 ──────────────────────────────────────────────────────────
-    st.markdown("### Hypothesis 2: Intelligent Escalation Validity")
-    st.caption(
-        "When the vector DB lacks relevant content, the system intelligently escalates "
-        "to a higher knowledge tier instead of repeating ineffective self-correction loops."
-    )
-
-    # ── Immediate Escalation Analysis ────────────────────────────────────────────
-    st.markdown("#### Immediate Escalation Analysis")
-    st.caption(
-        "The system triggers **immediate escalation** (skipping self-correction) under two independent conditions:  \n"
-        "① **AR < {ar}** — Answer Relevance alone is critically low (no relevant content in DB)  \n"
-        "② **F < {f} AND CP < {cp}** — Both Faithfulness and Context Precision are critically low (retrieval completely off-target)".format(
-            ar=_IMM_AR_THR, f=_IMM_F_THR, cp=_IMM_CP_THR
-        )
-    )
-
-    # ── Condition ①: AR-based escalation ──────────────────────────────────────
-    st.markdown("#### Condition ① — AR-Based Immediate Escalation (AR < {:.1f})".format(_IMM_AR_THR))
-    st.caption(
-        "When Answer Relevance falls below **{:.1f}**, the system infers the vector DB contains "
-        "no relevant content and immediately escalates without wasting loop iterations.".format(_IMM_AR_THR)
-    )
-    buf_ar = _plot_ar_escalation_zone(df)
-    if buf_ar:
-        st.image(buf_ar, width="stretch")
-        ar_esc_n = int((df["is_escalated"] & (df["ragas_ar"] < _IMM_AR_THR)).sum())
-        all_n    = int(df["ragas_ar"].notna().sum())
-        st.markdown(
-            f"★ AR-triggered escalation: **{ar_esc_n}** / {all_n} records &nbsp;|&nbsp; "
-            f"Threshold: AR < `{_IMM_AR_THR}`",
-            unsafe_allow_html=True,
-        )
-    else:
-        st.info("Insufficient data.")
-
-    # ── Condition ②: CP & F based escalation ──────────────────────────────────
-    st.markdown("#### Condition ② — CP & F Dual-Threshold Immediate Escalation (F < {f} AND CP < {cp})".format(
-        f=_IMM_F_THR, cp=_IMM_CP_THR))
-    st.caption(
-        "When both Faithfulness **and** Context Precision are critically low simultaneously, "
-        "the retrieval is judged completely off-target and the system escalates immediately.".format()
-    )
-    buf_dz = _plot_decision_zone(df)
-    if buf_dz:
-        st.image(buf_dz, width="stretch")
-        imm_n = int(((df["ragas_cp"] < _IMM_CP_THR) & (df["ragas_f"] < _IMM_F_THR) & df["is_escalated"]).sum())
-        all_n = int((df["ragas_cp"].notna() & df["ragas_f"].notna()).sum())
-        st.markdown(
-            f"★ CP & F dual-triggered escalation: **{imm_n}** / {all_n} records &nbsp;|&nbsp; "
-            f"Zone: CP < `{_IMM_CP_THR}` AND F < `{_IMM_F_THR}`",
-            unsafe_allow_html=True,
-        )
-    else:
-        st.info("Insufficient data.")
-
-    st.markdown("---")
-
-    # ── CP vs AR Scatter ──────────────────────────────────────────────────────
-    st.markdown("### Retrieval Precision (CP) vs Answer Relevance (AR) Correlation")
-    st.caption("Higher context precision is positively correlated with answer relevance.")
-    buf3 = _plot_cp_ar_scatter(df)
-    if buf3:
-        st.image(buf3, width="stretch")
-        valid = df[["ragas_cp", "ragas_ar"]].dropna()
-        if len(valid) > 2:
-            corr  = valid["ragas_cp"].corr(valid["ragas_ar"])
-            above = ((valid["ragas_cp"] >= _THRESHOLD) & (valid["ragas_ar"] >= _THRESHOLD)).sum()
-            pct   = above / len(valid) * 100
-            st.markdown(
-                f"**Pearson r = `{corr:.4f}`** &nbsp;|&nbsp; "
-                f"Both CP≥{_THRESHOLD} & AR≥{_THRESHOLD}: **{above} records ({pct:.1f}%)**",
-                unsafe_allow_html=True,
-            )
-    else:
-        st.info("Insufficient data.")
-
-    st.markdown("---")
-
-    # ── Hypothesis 3 ──────────────────────────────────────────────────────────
-    st.markdown("### Hypothesis 3: RAGAS Metrics by User Level")
-    st.caption("The system maintains high reliability scores for both Professional and Consumer users.")
-    buf4 = _plot_user_level_bar(df)
-    if buf4:
-        st.image(buf4, width="stretch")
-
-        # CI 공식 및 대입값 표시
-        with st.expander("95% Confidence Interval — Formula & Substituted Values", expanded=True):
-            st.latex(r"CI = \bar{x} \pm 1.96 \times \dfrac{s}{\sqrt{n}}")
-            st.caption(
-                "where  **x̄** = sample mean,  **s** = sample standard deviation,  "
-                "**n** = sample size,  **1.96** = z-score for 95% confidence level"
-            )
-            st.markdown("**Substituted values by User Level & Metric**")
-
-            metrics_map = {
-                "ragas_f":  "Faithfulness (F)",
-                "ragas_ar": "Answer Relevance (AR)",
-                "ragas_cp": "Context Precision (CP)",
-            }
-            rows = []
-            for lv in ["Professional", "Consumer"]:
-                grp = df[df["user_level"] == lv]
-                for col, label in metrics_map.items():
-                    vals = grp[col].dropna().values
-                    if len(vals) == 0:
-                        continue
-                    n    = len(vals)
-                    mean = vals.mean()
-                    s    = vals.std(ddof=1) if n > 1 else 0.0
-                    se   = s / np.sqrt(n)
-                    ci   = 1.96 * se
-                    rows.append({
-                        "User Level": lv,
-                        "Metric": label,
-                        "n": n,
-                        "x̄ (Mean)": round(mean, 4),
-                        "s (Std Dev)": round(s, 4),
-                        "s / √n (SE)": round(se, 4),
-                        "1.96 × SE": round(ci, 4),
-                        "CI Lower": round(mean - ci, 4),
-                        "CI Upper": round(mean + ci, 4),
-                    })
-            st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
-    else:
-        st.info("Insufficient data.")
-
-    st.markdown("---")
-
-    # ── Multi-Tier Knowledge Hierarchy Analysis ───────────────────────────────
-    st.markdown("### Multi-Tier Knowledge Hierarchy Analysis")
-    st.caption(
-        "Demonstrates that the Multi-Tier architecture (Tier 0 → Tier 1 → Tier 2) "
-        "substantially expands answer coverage and quality beyond a single-source RAG system."
-    )
-
-    # Viz 1: Cumulative Success Rate
-    st.markdown("#### Viz 1 — Cumulative Answer Success Rate by Tier")
-    st.caption("Each tier added cumulatively increases the proportion of requests meeting quality thresholds (F≥0.8 & AR≥0.8).")
-    buf_cs = _plot_cumulative_success(df)
-    if buf_cs:
-        st.image(buf_cs, width="stretch")
-        def _success_rate(max_tier):
-            pool = df[df["ragas_f"].notna() & df["ragas_ar"].notna() & (df["tier_id"] <= max_tier)]
-            best = pool.sort_values("tier_id").groupby("request_id").last()
-            ok = ((best["ragas_f"] >= _THRESHOLD) & (best["ragas_ar"] >= _AR_THRESHOLD)).sum()
-            return round(ok / len(best) * 100, 1) if len(best) else 0.0
-        r0, r1, r2 = _success_rate(0), _success_rate(1), _success_rate(2)
-        st.dataframe(pd.DataFrame([
-            {"Stage": "Tier 0 only (Vector DB)",   "Success Rate (%)": r0, "Gain (%)": "—"},
-            {"Stage": "Tier 0+1 (+LLM)",           "Success Rate (%)": r1, "Gain (%)": f"+{r1-r0:.1f}"},
-            {"Stage": "Tier 0+1+2 (+Web Search)",  "Success Rate (%)": r2, "Gain (%)": f"+{r2-r1:.1f}"},
-        ]), hide_index=True, width="content")
-    else:
-        st.info("Insufficient data.")
-
+    # ── 7. 계산 효율성 ────────────────────────────────────────────────────────
+    st.markdown("### 7. 계산 효율성 (처리 시간)")
+    st.caption("조건별 쿼리당 평균 처리 시간 (초, 95% CI)")
+    buf = _plot_efficiency(df)
+    if buf:
+        st.image(buf, use_container_width=True)
+    st.dataframe(_table_efficiency(df), hide_index=True, use_container_width=True)

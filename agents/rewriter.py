@@ -64,6 +64,7 @@ _REFINE_PROMPT = ChatPromptTemplate.from_messages([
         "Last evaluation - Faithfulness: {faithfulness}, "
         "Answer Relevance: {answer_relevance}, "
         "Context Precision: {context_precision}\n"
+        "Failure analysis: {critic_feedback}\n"
         "Hallucination flags: {hallu_summary}\n\n"
         "Generate an improved query that addresses these failures."
     )),
@@ -92,6 +93,7 @@ def _refine_query(
     answer_relevance: float,
     context_precision: float,
     hallucination_flags: List[str],
+    critic_feedback: str = "",
 ) -> dict:
     hallu_summary = "; ".join(hallucination_flags[:3]) if hallucination_flags else "없음"
     llm = get_chat_llm(model=rewriter_model(), temperature=0.4, max_tokens=1024)
@@ -103,6 +105,7 @@ def _refine_query(
         "faithfulness": f"{faithfulness:.2f}",
         "answer_relevance": f"{answer_relevance:.2f}",
         "context_precision": f"{context_precision:.2f}",
+        "critic_feedback": critic_feedback or "없음",
         "hallu_summary": hallu_summary,
     })
     data = parse_llm_json(raw)
@@ -123,7 +126,8 @@ def adaptive_query_rewriter(state: GraphState) -> GraphState:
     level = state["user_level"]
     loop = state["loop_count"]
 
-    if state.get("queries"):
+    if state.get("queries") and loop > 0:
+        # Tier 0 자가 교정 루프 재시도: 실패 원인 기반 표적 수정
         result = _refine_query(
             question=q,
             user_level=level,
@@ -132,10 +136,11 @@ def adaptive_query_rewriter(state: GraphState) -> GraphState:
             answer_relevance=state.get("answer_relevance_score", 0.0),
             context_precision=state.get("context_precision_score", 0.0),
             hallucination_flags=state.get("hallucination_flags", []),
+            critic_feedback=state.get("critic_feedback", ""),
         )
-        mode = f"재시도 {loop}회차" if loop > 0 else f"Tier {state.get('search_tier', 0)} 에스컬레이션"
-        state["log"].append(f"[Rewriter] {mode} - 쿼리 개선 모드")
+        state["log"].append(f"[Rewriter] 재시도 {loop}회차 - 쿼리 개선 모드")
     else:
+        # 최초 호출 또는 Tier 에스컬레이션: 쿼리 최적화
         intent = "기타"
         for line in reversed(state.get("log", [])):
             if "의도=" in line:
@@ -144,7 +149,8 @@ def adaptive_query_rewriter(state: GraphState) -> GraphState:
                     intent = m.group(1).rstrip(")")
                     break
         result = _optimize_query(question=q, user_level=level, detected_intent=intent)
-        state["log"].append("[Rewriter] 최초 질의 최적화 모드")
+        mode = f"Tier {state.get('search_tier', 0)} 에스컬레이션" if state.get("queries") else "최초 질의"
+        state["log"].append(f"[Rewriter] {mode} 최적화 모드")
 
     optimized_query = (result.get("query") or "").strip()
     reasoning = (result.get("reasoning") or "").strip()

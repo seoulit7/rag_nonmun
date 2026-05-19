@@ -14,100 +14,187 @@ from agents.rag_engine import rag_engine
 from agents.critic import critic_agent, check_faithfulness, is_critically_low
 from agents.output import output_agent
 from core.llm_client import set_llm_provider, reset_llm_provider
-from infra.audit_logger import save_audit_log, update_audit_log_answer
+from infra.audit_logger import save_audit_log, save_loop_log
+from infra.evaluator import flesch_kincaid_grade_en
 
 
 # ── 노드 이름 → step_callback 이름 매핑 ─────────────────────────────────────
 _NODE_TO_STEP = {
     "level_classifier": "level",
-    "query_rewriter": "rewriter",
-    "rag_engine": "rag",
-    "critic": "critic",
-    "output": "output",
-    "fallback": "fallback",
+    "query_rewriter":   "rewriter",
+    "rag_engine":       "rag",
+    "critic":           "critic",
+    "output":           "output",
+    "fallback":         "fallback",
 }
 
 
-# ── 노드 함수들 ──────────────────────────────────────────────────────────────
+# ── Critic 노드 ──────────────────────────────────────────────────────────────
 
 def _critic_node(
     state: GraphState,
 ) -> Command[Literal["query_rewriter", "output", "fallback"]]:
-    """RAGAS 평가 후 Self-Corrective Loop 라우팅.
+    """RAGAS 평가 후 Ablation 조건별 Self-Corrective Loop 라우팅.
 
-    - 기준 충족(F >= threshold) → output
-    - Tier 0 재시도 가능 → query_rewriter (loop_count 증가)
-    - Tier 0 즉시 에스컬레이션 또는 재시도 소진 → query_rewriter (search_tier=1)
-    - Tier 1 기준 미달 → query_rewriter (search_tier=2)
-    - Tier 2 기준 미달 → fallback
+    조건별 동작:
+    - A (Full System)        : 기본 동작 (자가 교정 + 멀티 티어)
+    - B (No Self-Correction) : Tier 0 첫 실패 즉시 Tier 1 에스컬레이션
+    - C (No Multi-Tier)      : Tier 0 내 자가 교정만, 실패 시 fallback
+    - D (No Level Classifier): A와 동일한 라우팅 (수준 분류만 외부에서 고정)
+    - E (Baseline)           : 항상 즉시 output (첫 번째 답변 그대로)
+
+    루프 로그:
+    - 매 평가 완료 후 무조건 save_loop_log() 호출 (is_final=False, goto 무관).
+    - is_final=True 행은 output/fallback 노드에서 save_audit_log()가 별도 INSERT.
     """
-    _t0 = time.perf_counter()
     state = critic_agent(state)
-    execution_time_ms = int((time.perf_counter() - _t0) * 1000)
 
-    request_id = state.get("request_id", "")
-    tier = state["search_tier"]
-    loop = state["loop_count"]
-    ar = state.get("answer_relevance_score", 0.0)
-    f = state.get("critic_score", 0.0)
-    cp = state.get("context_precision_score", 0.0)
+    eval_count = state.get("eval_count", 0) + 1
+    condition  = state.get("ablation_condition") or "A"
+    tier  = state["search_tier"]
+    loop  = state["loop_count"]
+    ar    = state.get("answer_relevance_score", 0.0)
+    f     = state.get("critic_score", 0.0)
+    cp    = state.get("context_precision_score", 0.0)
 
-    if check_faithfulness(state):
-        save_audit_log(state, request_id, is_escalated=False, is_fallback=False, execution_time_ms=execution_time_ms)
-        return Command(update=dict(state), goto="output")
+    new_state = {**state, "log": list(state["log"]), "eval_count": eval_count}
+    goto: str = ""
 
-    new_state = {**state, "log": list(state["log"])}
-
-    if tier == 0:
-        if is_critically_low(state):
-            save_audit_log(state, request_id, is_escalated=True, is_fallback=False, execution_time_ms=execution_time_ms)
-            new_state["search_tier"] = 1
-            new_state["loop_count"] = 0
-            new_state["log"].append(
-                f"[Loop] RAGAS 지표 현저히 낮음 "
-                f"(AR={ar:.2f}, F={f:.2f}, CP={cp:.2f}) → 즉시 Tier 1 에스컬레이션."
-            )
-        elif loop >= settings.MAX_LOOPS - 1:
-            save_audit_log(state, request_id, is_escalated=True, is_fallback=False, execution_time_ms=execution_time_ms)
-            new_state["search_tier"] = 1
-            new_state["loop_count"] = 0
-            new_state["log"].append(
-                f"[Loop] Tier 0 최대 재시도({settings.MAX_LOOPS}회) 소진 "
-                f"(F={f:.2f}, AR={ar:.2f}) → Tier 1 에스컬레이션."
-            )
-        else:
-            save_audit_log(state, request_id, is_escalated=False, is_fallback=False, execution_time_ms=execution_time_ms)
-            new_state["loop_count"] = loop + 1
-            reasons = []
-            if f < settings.FAITHFULNESS_THRESHOLD:
-                reasons.append(f"F={f:.2f}<{settings.FAITHFULNESS_THRESHOLD}")
-            if ar < settings.AR_THRESHOLD:
-                reasons.append(f"AR={ar:.2f}<{settings.AR_THRESHOLD}")
-            if cp < settings.CP_THRESHOLD:
-                reasons.append(f"CP={cp:.2f}<{settings.CP_THRESHOLD}")
-            new_state["log"].append(
-                f"[Loop] Tier 0 재시도 {loop + 1}/{settings.MAX_LOOPS} — "
-                f"{', '.join(reasons)} → query rewriting 재시도."
-            )
-        return Command(update=new_state, goto="query_rewriter")
-
-    if tier == 1:
-        save_audit_log(state, request_id, is_escalated=True, is_fallback=False, execution_time_ms=execution_time_ms)
-        new_state["search_tier"] = 2
-        new_state["loop_count"] = 0
+    # ── 조건 E (Baseline): 평가 후 항상 즉시 output ──────────────────────────
+    if condition == "E":
         new_state["log"].append(
-            f"[Loop] Tier 1 기준 미달 (F={f:.2f} < {settings.FAITHFULNESS_THRESHOLD}) "
-            "→ Tier 2 에스컬레이션."
+            f"[Loop] 조건 E (Baseline): 즉시 출력 "
+            f"(F={f:.2f}, AR={ar:.2f}, CP={cp:.2f})."
         )
-        return Command(update=new_state, goto="query_rewriter")
+        goto = "output"
 
-    # tier == 2 — 모든 Tier 소진
-    save_audit_log(state, request_id, is_escalated=True, is_fallback=True, execution_time_ms=execution_time_ms)
-    return Command(update=new_state, goto="fallback")
+    # ── Tier 1: AR만 평가 ────────────────────────────────────────────────────
+    elif tier == 1:
+        if ar >= settings.AR_THRESHOLD:
+            new_state["log"].append(
+                f"[Loop] Tier 1 성공 (AR={ar:.2f} ≥ {settings.AR_THRESHOLD}) → output."
+            )
+            goto = "output"
+        else:
+            new_state["search_tier"] = 2
+            new_state["loop_count"]  = 0
+            new_state["tier_path"]   = state.get("tier_path", "0→1") + "→2"
+            new_state["log"].append(
+                f"[Loop] Tier 1 기준 미달 (AR={ar:.2f} < {settings.AR_THRESHOLD}) "
+                "→ Tier 2 에스컬레이션."
+            )
+            goto = "query_rewriter"
+
+    # ── 성공 조건: F ∧ AR ∧ CP 모두 충족 ────────────────────────────────────
+    elif check_faithfulness(state):
+        new_state["log"].append(
+            f"[Loop] 품질 기준 충족 "
+            f"(F={f:.2f}, AR={ar:.2f}, CP={cp:.2f}) → output."
+        )
+        goto = "output"
+
+    # ── Tier 0 실패 라우팅 ───────────────────────────────────────────────────
+    elif tier == 0:
+
+        # 조건 B: 자가 교정 없음 — 첫 실패 즉시 Tier 1 에스컬레이션
+        if condition == "B":
+            new_state["search_tier"] = 1
+            new_state["loop_count"]  = 0
+            new_state["tier_path"]   = "0→1"
+            new_state["log"].append(
+                f"[Loop] 조건 B (자가 교정 없음): "
+                f"Tier 0 첫 실패 (F={f:.2f}, AR={ar:.2f}) → Tier 1 에스컬레이션."
+            )
+            goto = "query_rewriter"
+
+        # 조건 C: 멀티 티어 없음 — Tier 0 내 자가 교정만, 소진 시 fallback
+        elif condition == "C":
+            if loop >= settings.MAX_LOOPS - 1:
+                new_state["log"].append(
+                    f"[Loop] 조건 C (멀티 티어 없음): "
+                    f"Tier 0 최대 재시도({settings.MAX_LOOPS}회) 소진 → fallback."
+                )
+                goto = "fallback"
+            else:
+                new_state["loop_count"]           = loop + 1
+                new_state["self_correction_count"] = (
+                    state.get("self_correction_count", 0) + 1
+                )
+                new_state["log"].append(
+                    f"[Loop] 조건 C: Tier 0 재시도 {loop + 1}/{settings.MAX_LOOPS} "
+                    f"(F={f:.2f}, AR={ar:.2f}, CP={cp:.2f})."
+                )
+                goto = "query_rewriter"
+
+        # 조건 A / D: 기본 동작
+        else:
+            if is_critically_low(state):
+                new_state["search_tier"] = 1
+                new_state["loop_count"]  = 0
+                new_state["tier_path"]   = "0→1"
+                new_state["log"].append(
+                    f"[Loop] RAGAS 지표 현저히 낮음 "
+                    f"(AR={ar:.2f}, F={f:.2f}, CP={cp:.2f}) → 즉시 Tier 1 에스컬레이션."
+                )
+                goto = "query_rewriter"
+
+            elif loop >= settings.MAX_LOOPS - 1:
+                new_state["search_tier"] = 1
+                new_state["loop_count"]  = 0
+                new_state["tier_path"]   = "0→1"
+                new_state["log"].append(
+                    f"[Loop] Tier 0 최대 재시도({settings.MAX_LOOPS}회) 소진 "
+                    f"(F={f:.2f}, AR={ar:.2f}) → Tier 1 에스컬레이션."
+                )
+                goto = "query_rewriter"
+
+            else:
+                new_state["loop_count"]           = loop + 1
+                new_state["self_correction_count"] = (
+                    state.get("self_correction_count", 0) + 1
+                )
+                reasons = []
+                if f  < settings.FAITHFULNESS_THRESHOLD: reasons.append(f"F={f:.2f}<{settings.FAITHFULNESS_THRESHOLD}")
+                if ar < settings.AR_THRESHOLD:            reasons.append(f"AR={ar:.2f}<{settings.AR_THRESHOLD}")
+                if cp < settings.CP_THRESHOLD:            reasons.append(f"CP={cp:.2f}<{settings.CP_THRESHOLD}")
+                new_state["log"].append(
+                    f"[Loop] Tier 0 재시도 {loop + 1}/{settings.MAX_LOOPS} — "
+                    f"{', '.join(reasons)} → query rewriting 재시도."
+                )
+                goto = "query_rewriter"
+
+    # ── Tier 2: 모든 Tier 소진 → fallback ───────────────────────────────────
+    else:
+        new_state["log"].append(
+            f"[Loop] 모든 Tier 소진 (최종 F={f:.2f}, AR={ar:.2f}) → fallback."
+        )
+        goto = "fallback"
+
+    # ── 매 평가마다 중간 로그 저장 (goto 무관) ──────────────────────────────
+    # Tier 1 평가: 논문 설계상 AR만 사용하므로 F, CP는 null로 저장
+    _log_state = new_state
+    if tier == 1:
+        _log_state = {**new_state, "critic_score": None, "context_precision_score": None}
+    save_loop_log(_log_state, new_state.get("request_id", ""), eval_count)
+
+    return Command(update=new_state, goto=goto)
+
+
+# ── Output / Fallback 노드 ───────────────────────────────────────────────────
+
+def _output_node(state: GraphState) -> GraphState:
+    """한국어 번역 + 출처·면책 조항 추가 후 감사 로그 저장."""
+    # FK Grade: 번역 전 영어 원문으로 계산 (output_agent 호출 전)
+    fk = flesch_kincaid_grade_en(state.get("answer") or "")
+    result = output_agent(state)
+    elapsed = int((time.time() - result.get("workflow_start_time", time.time())) * 1000)
+    save_audit_log(result, result.get("request_id", ""), is_fallback=False,
+                   execution_time_ms=elapsed, fk_grade=fk)
+    return result
 
 
 def _fallback_node(state: GraphState) -> GraphState:
-    """모든 Tier 소진 후 검색된 원문을 그대로 제시한다."""
+    """모든 Tier 소진 후 검색된 원문을 그대로 제시하고 감사 로그 저장."""
     f = state.get("critic_score", 0.0)
     state["log"].append(
         f"[Final] 모든 Tier 소진 (최종 F={f:.2f}) — "
@@ -122,49 +209,34 @@ def _fallback_node(state: GraphState) -> GraphState:
         f"[참고 원문]\n{raw_ctx}"
     )
     result = output_agent(state)
-    update_audit_log_answer(result.get("request_id", ""), result["answer"])
+    elapsed = int((time.time() - result.get("workflow_start_time", time.time())) * 1000)
+    # fallback은 영어 원문 답변이 없으므로 fk_grade=None
+    save_audit_log(result, result.get("request_id", ""), is_fallback=True,
+                   execution_time_ms=elapsed, fk_grade=None)
     return result
 
 
 # ── 그래프 빌드 ──────────────────────────────────────────────────────────────
 
 def build_graph():
-    """LangGraph StateGraph 기반 Self-Corrective RAG 그래프를 빌드·컴파일한다.
-
-    노드 구성:
-      level_classifier → query_rewriter → rag_engine → critic
-                                  ↑________________________|  (Self-Corrective Loop)
-      critic → output → END
-      critic → fallback → END
-    """
     graph = StateGraph(GraphState)
-
-    def _output_node(state: GraphState) -> GraphState:
-        result = output_agent(state)
-        update_audit_log_answer(result.get("request_id", ""), result["answer"])
-        return result
-
-    # 노드 등록
     graph.add_node("level_classifier", level_classifier)
-    graph.add_node("query_rewriter", adaptive_query_rewriter)
-    graph.add_node("rag_engine", rag_engine)
-    graph.add_node("critic", _critic_node)       # Command로 조건부 라우팅
-    graph.add_node("output", _output_node)
-    graph.add_node("fallback", _fallback_node)
+    graph.add_node("query_rewriter",   adaptive_query_rewriter)
+    graph.add_node("rag_engine",       rag_engine)
+    graph.add_node("critic",           _critic_node)
+    graph.add_node("output",           _output_node)
+    graph.add_node("fallback",         _fallback_node)
 
-    # 엣지 연결
     graph.set_entry_point("level_classifier")
     graph.add_edge("level_classifier", "query_rewriter")
-    graph.add_edge("query_rewriter", "rag_engine")
-    graph.add_edge("rag_engine", "critic")
-    # critic → Command 반환: query_rewriter / output / fallback 으로 동적 라우팅
-    graph.add_edge("output", END)
-    graph.add_edge("fallback", END)
+    graph.add_edge("query_rewriter",   "rag_engine")
+    graph.add_edge("rag_engine",       "critic")
+    graph.add_edge("output",           END)
+    graph.add_edge("fallback",         END)
 
     return graph.compile()
 
 
-# 모듈 수준 싱글턴 (재컴파일 방지)
 _compiled_graph = None
 
 
@@ -182,16 +254,24 @@ def run_medical_self_corrective_rag(
     forced_user_level: Optional[str] = None,
     step_callback: Optional[Callable[[str, GraphState], None]] = None,
     llm_provider: str = "openai",
+    ablation_condition: str = "",
+    expected_tier: int = -1,
+    query_index: int = 0,
+    disease: str = "",
+    query_level_label: str = "",
 ) -> GraphState:
-    """Self-Corrective RAG 메인 실행 함수 (LangGraph 기반).
+    """Self-Corrective RAG 메인 실행 함수.
 
-    실행 흐름:
-      1. level_classifier — 사용자 수준 분류 (forced_user_level 시 스킵)
-      2. query_rewriter   — MSD Manual 최적화 영문 쿼리 생성
-      3. rag_engine       — ReAct 에이전트로 검색 + 답변 합성
-      4. critic           — RAGAS 3중 평가 → Self-Corrective Loop 라우팅
-      5. output           — 한국어 번역 + 출처·면책 조항 추가
-      6. fallback         — 모든 Tier 소진 시 원문 제시
+    Args:
+        question:           사용자 질문
+        forced_user_level:  수준 강제 지정 ("Professional"/"Consumer"). None이면 자동 분류.
+        step_callback:      노드 실행마다 호출되는 스트리밍 콜백.
+        llm_provider:       "openai" 또는 "gemini"
+        ablation_condition: Ablation Study 조건 ("A"~"E"). ""=일반 운영(조건 A와 동일).
+        expected_tier:      STQS-40 예상 티어 (0/1/2). -1=일반 운영.
+        query_index:        STQS-40 질문 번호 (1-40). 0=일반 운영.
+        disease:            질환명 (STQS-40 메타데이터).
+        query_level_label:  STQS-40 정답 레이블 ("P"/"C"). ""=일반 운영.
     """
     initialize_vector_db()
 
@@ -200,33 +280,52 @@ def run_medical_self_corrective_rag(
         prov = "openai"
     tok = set_llm_provider(prov)
 
+    cond = (ablation_condition or "").strip().upper()
+
+    # 조건 D / E: 수준 분류기 없음 → Consumer 고정
+    if cond in ("D", "E") and not forced_user_level:
+        forced_user_level = "Consumer"
+
     initial_state: GraphState = {
-        "request_id": str(uuid.uuid4()),
-        "question": question,
-        "user_level": forced_user_level or "",
-        "queries": [],
-        "context": [],
-        "context_sources": [],
-        "answer": "",
-        "critic_score": 0.0,
+        # ── 요청 ──────────────────────────────────────────────────────────────
+        "request_id":             str(uuid.uuid4()),
+        "question":               question,
+        "user_level":             forced_user_level or "",
+        "queries":                [],
+        "context":                [],
+        "context_sources":        [],
+        "answer":                 "",
+        # ── RAGAS ─────────────────────────────────────────────────────────────
+        "critic_score":           0.0,
         "answer_relevance_score": 0.0,
         "context_precision_score": 0.0,
-        "hallucination_flags": [],
-        "search_tier": 0,
-        "llm_provider": prov,
-        "loop_count": 0,
+        "hallucination_flags":    [],
+        "critic_feedback":        "",
+        # ── 티어 / 루프 ───────────────────────────────────────────────────────
+        "search_tier":            0,
+        "loop_count":             0,
+        "tier_path":              "0",
+        "self_correction_count":  0,
+        "eval_count":             0,
+        # ── 시스템 ────────────────────────────────────────────────────────────
+        "llm_provider":           prov,
+        "workflow_start_time":    time.time(),
         "log": (
             [f"[Mode] 사용자 선택 레벨: {forced_user_level}."]
-            if forced_user_level
-            else []
+            if forced_user_level else []
         ),
+        # ── Ablation Study 메타데이터 ──────────────────────────────────────────
+        "ablation_condition":     cond,
+        "query_index":            query_index,
+        "disease":                disease,
+        "query_level_label":      query_level_label,
+        "expected_tier":          expected_tier,
     }
 
     try:
         graph = _get_graph()
 
         if step_callback is not None:
-            # stream 모드: 노드 실행마다 step_callback 호출
             current_state = dict(initial_state)
             last_rewriter_tier = 0
             for event in graph.stream(initial_state, stream_mode="updates"):
@@ -235,8 +334,6 @@ def run_medical_self_corrective_rag(
                     if isinstance(updates, dict):
                         current_state = {**current_state, **updates}
                     step = _NODE_TO_STEP.get(node_name, node_name)
-                    # query_rewriter가 재호출(재시도/에스컬레이션)될 때 tier_up/retry 먼저 렌더링
-                    # loop_count > 0 조건으로 최초 호출(첫 쿼리 최적화)은 제외
                     if node_name == "query_rewriter" and pre_update_queries and current_state.get("loop_count", 0) > 0:
                         new_tier = current_state.get("search_tier", 0)
                         extra = "tier_up" if new_tier > last_rewriter_tier else "retry"

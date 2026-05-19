@@ -59,7 +59,7 @@ def fetch_logs(
         where.append("user_level = ANY(%s)")
         params.append(user_levels)
     if tiers:
-        where.append("tier_id = ANY(%s)")
+        where.append("final_tier = ANY(%s)")
         params.append(tiers)
     if escalated is not None:
         where.append("is_escalated = %s")
@@ -68,14 +68,15 @@ def fetch_logs(
         where.append("is_fallback = %s")
         params.append(fallback)
 
-    where.append("ragas_f BETWEEN %s AND %s")
+    where.append("(ragas_f IS NULL OR ragas_f BETWEEN %s AND %s)")
     params.extend([ragas_f_min, ragas_f_max])
 
     if keyword.strip():
         where.append("original_query ILIKE %s")
         params.append(f"%{keyword.strip()}%")
 
-    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+    where.append("is_final = TRUE")
+    where_sql = "WHERE " + " AND ".join(where)
     offset = (page - 1) * PAGE_SIZE
 
     count_sql = f"SELECT COUNT(*) FROM public.rag_audit_log {where_sql}"
@@ -86,8 +87,9 @@ def fetch_logs(
             created_at AT TIME ZONE 'Asia/Seoul' AS created_at,
             user_level,
             original_query,
-            tier_id,
-            loop_count,
+            final_tier,
+            loop_number,
+            self_correction_count,
             ragas_f,
             ragas_ar,
             ragas_cp,
@@ -114,7 +116,7 @@ def fetch_logs(
 
         df = pd.DataFrame([dict(r) for r in rows])
         df["request_id_short"] = df["request_id"].astype(str).str[:8] + "..."
-        df["tier_label"] = df["tier_id"].map(TIER_LABEL)
+        df["tier_label"] = df["final_tier"].map(TIER_LABEL)
         df["created_at"] = pd.to_datetime(df["created_at"]).dt.strftime("%Y-%m-%d %H:%M")
         return df, total
 
@@ -145,8 +147,10 @@ def fetch_detail(request_id: str) -> dict:
             original_query,
             optimized_query,
             final_answer,
-            tier_id,
-            loop_count,
+            loop_number,
+            is_final,
+            final_tier,
+            self_correction_count,
             ragas_f,
             ragas_ar,
             ragas_cp,
@@ -157,7 +161,7 @@ def fetch_detail(request_id: str) -> dict:
             execution_time_ms
         FROM public.rag_audit_log
         WHERE request_id = %s::uuid
-        ORDER BY tier_id ASC, loop_count ASC
+        ORDER BY loop_number ASC
     """
     try:
         with _conn() as conn:
@@ -172,7 +176,7 @@ def fetch_detail(request_id: str) -> dict:
         first = dicts[0]
 
         loops_df = pd.DataFrame(dicts)
-        loops_df["tier_label"] = loops_df["tier_id"].map(TIER_LABEL)
+        loops_df["tier_label"] = loops_df["final_tier"].map(TIER_LABEL)
         loops_df["created_at"] = pd.to_datetime(loops_df["created_at"]).dt.strftime(
             "%Y-%m-%d %H:%M:%S"
         )
@@ -186,7 +190,8 @@ def fetch_detail(request_id: str) -> dict:
                 seen.add(q)
                 queries.append(q)
 
-        final_answer = dicts[-1].get("final_answer") or ""
+        final_row = next((d for d in dicts if d.get("is_final")), dicts[-1])
+        final_answer = final_row.get("final_answer") or ""
 
         return {
             "meta": {

@@ -1,19 +1,22 @@
 import logging
 import traceback
 from pathlib import Path
-from typing import List
+from typing import TYPE_CHECKING, List
 
-from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 import config.settings as settings
 
+if TYPE_CHECKING:
+    from langchain_community.vectorstores import FAISS
+    from langchain_huggingface import HuggingFaceEmbeddings
+
 logger = logging.getLogger(__name__)
 
 
-def _get_embeddings() -> HuggingFaceEmbeddings:
+def _get_embeddings() -> "HuggingFaceEmbeddings":
+    from langchain_huggingface import HuggingFaceEmbeddings
     logger.info("[Embedding] 모델 로드: %s", settings.EMBEDDING_MODEL)
     embeddings = HuggingFaceEmbeddings(model_name=settings.EMBEDDING_MODEL)
     logger.info("[Embedding] 모델 로드 완료")
@@ -135,23 +138,25 @@ def load_and_split_pdfs(folder_path: str) -> List[Document]:
     return chunks
 
 
-def build_faiss_db(docs: List[Document]) -> FAISS:
+def build_faiss_db(docs: List[Document]) -> "FAISS":
     """Document 목록으로 FAISS DB를 생성합니다."""
+    from langchain_community.vectorstores import FAISS
     logger.info("[FAISS] 인덱스 빌드 시작: %d 청크", len(docs))
     db = FAISS.from_documents(docs, _get_embeddings())
     logger.info("[FAISS] 인덱스 빌드 완료")
     return db
 
 
-def save_faiss_db(db: FAISS, index_path: str) -> None:
+def save_faiss_db(db: "FAISS", index_path: str) -> None:
     """FAISS DB를 로컬에 저장합니다."""
     Path(index_path).parent.mkdir(parents=True, exist_ok=True)
     db.save_local(index_path)
     logger.info("[FAISS] 인덱스 저장 완료: %s", index_path)
 
 
-def load_faiss_db(index_path: str) -> FAISS:
+def load_faiss_db(index_path: str) -> "FAISS":
     """로컬에 저장된 FAISS DB를 로드합니다."""
+    from langchain_community.vectorstores import FAISS
     logger.info("[FAISS] 인덱스 로드 시작: %s", index_path)
     db = FAISS.load_local(
         index_path,
@@ -162,7 +167,7 @@ def load_faiss_db(index_path: str) -> FAISS:
     return db
 
 
-def retrieve(db: FAISS, query: str, top_k: int = None) -> List[Document]:
+def retrieve(db: "FAISS", query: str, top_k: int = None) -> List[Document]:
     """FAISS DB에서 유사도 높은 상위 top_k 문서를 반환합니다."""
     k = top_k or settings.RAG_TOP_K
     logger.debug("[Retrieve] query='%s', top_k=%d", query[:50], k)

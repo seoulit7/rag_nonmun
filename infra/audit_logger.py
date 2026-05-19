@@ -1,22 +1,55 @@
-"""Supabase rag_audit_log 테이블에 RAGAS 평가 결과를 저장·업데이트하는 모듈."""
+"""Supabase rag_audit_log 테이블에 RAGAS 평가 결과를 저장하는 모듈.
+
+설계 원칙 (v3.0):
+- save_loop_log : critic 평가 완료마다 무조건 INSERT (is_final=False). loop_number=eval_count.
+- save_audit_log: output_node / fallback_node 완료 후 1회 INSERT (is_final=True). final_answer 포함.
+- request_id당 N+1행 (N=critic 평가 횟수). 루프별 점수 변화 추적 가능.
+- UPDATE 없음. INSERT only.
+"""
 import logging
 import threading
+import time
 from typing import Optional
 
 import psycopg2
-import psycopg2.extras
 
 import config.settings as settings
 from models.state import GraphState
 
 logger = logging.getLogger(__name__)
 
-# 커넥션은 스레드별로 관리 (Streamlit 멀티스레드 환경 대응)
 _local = threading.local()
+
+_INSERT_SQL = """
+    INSERT INTO public.rag_audit_log (
+        request_id, loop_number, is_final,
+        ablation_condition, query_index, disease,
+        query_level_label, user_level,
+        original_query, optimized_query,
+        expected_tier, final_tier, tier_path,
+        is_escalated, is_fallback, self_correction_count,
+        ragas_f, ragas_ar, ragas_cp, q_total,
+        hallucination_detected, hallucination_count,
+        retrieved_doc_count, llm_model, execution_time_ms,
+        final_answer, fk_grade
+    ) VALUES (
+        %(request_id)s, %(loop_number)s, %(is_final)s,
+        %(ablation_condition)s, %(query_index)s, %(disease)s,
+        %(query_level_label)s, %(user_level)s,
+        %(original_query)s, %(optimized_query)s,
+        %(expected_tier)s, %(final_tier)s, %(tier_path)s,
+        %(is_escalated)s, %(is_fallback)s, %(self_correction_count)s,
+        %(ragas_f)s, %(ragas_ar)s, %(ragas_cp)s, %(q_total)s,
+        %(hallucination_detected)s, %(hallucination_count)s,
+        %(retrieved_doc_count)s, %(llm_model)s, %(execution_time_ms)s,
+        %(final_answer)s, %(fk_grade)s
+    )
+    RETURNING log_id;
+"""
 
 
 def _get_conn():
-    """스레드-로컬 psycopg2 커넥션을 반환한다. 끊어졌으면 재연결."""
+    """스레드-로컬 psycopg2 커넥션 반환. 끊어졌으면 재연결."""
     conn = getattr(_local, "conn", None)
     if conn is None or conn.closed:
         url = settings.SUPABASE_DB_URL
@@ -28,124 +61,170 @@ def _get_conn():
     return conn
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# INSERT: critic 평가 직후 호출
-# ──────────────────────────────────────────────────────────────────────────────
+def _build_tier_path(log: list, final_tier: int) -> str:
+    """state['log']에서 에스컬레이션 경로를 추출한다."""
+    path = [0]
+    for line in log:
+        if "Tier 1 에스컬레이션" in line and 1 not in path:
+            path.append(1)
+        if "Tier 2 에스컬레이션" in line and 2 not in path:
+            path.append(2)
+    return "→".join(str(t) for t in path)
 
-def save_audit_log(
+
+def _build_row(
     state: GraphState,
     request_id: str,
-    is_escalated: bool,
+    loop_number: int,
+    is_final: bool,
     is_fallback: bool,
-    execution_time_ms: Optional[int] = None,
-) -> Optional[int]:
-    """RAGAS 평가 결과를 rag_audit_log 테이블에 INSERT하고 log_id를 반환한다.
+    execution_time_ms: Optional[int],
+    final_answer: Optional[str],
+    fk_grade: Optional[float] = None,
+) -> dict:
+    """공통 row dict 생성."""
+    final_tier = state["search_tier"]
+    ar = float(state.get("answer_relevance_score", 0.0) or 0.0)
 
-    호출 시점: _critic_node() 내부에서 라우팅 분기 결정 직후 (output_agent 실행 전).
-    final_answer는 아직 번역되지 않아 NULL로 저장하고, output/fallback 후
-    update_audit_log_answer()로 업데이트한다.
+    f_raw  = state.get("critic_score")
+    cp_raw = state.get("context_precision_score")
 
-    Args:
-        state:             현재 LangGraph GraphState
-        request_id:        워크플로우 전체 고유 ID (UUID 문자열)
-        is_escalated:      이번 평가에서 상위 Tier로 에스컬레이션 됐는지 여부
-        is_fallback:       모든 Tier 소진으로 fallback 노드로 라우팅됐는지 여부
-        execution_time_ms: critic_agent() (RAGAS 평가) 소요 시간 (밀리초)
+    # Tier 1 평가: 논문 설계상 AR만 사용 → F, CP, q_total null.
+    # - 중간행: graph.py _critic_node에서 tier==1 시 critic_score=None으로 전달 (f_raw is None)
+    # - 최종행: is_final=True & final_tier==1 로 판별 (Tier 0→1 에스컬레이션 중간행 오적용 방지)
+    if (is_final and final_tier == 1) or f_raw is None or cp_raw is None:
+        f       = None
+        cp      = None
+        q_total = None
+    else:
+        f       = float(f_raw)
+        cp      = float(cp_raw)
+        q_total = round(0.4 * f + 0.4 * ar + 0.2 * cp, 6)
 
-    Returns:
-        삽입된 log_id (int), 실패 시 None
-    """
-    user_level = state.get("user_level") or ""
-    # DB CHECK: user_level IN ('Professional', 'Consumer') — 분류 전이면 저장 스킵
-    if user_level not in ("Professional", "Consumer"):
-        logger.warning("[AuditLog] user_level=%r 이 유효하지 않아 저장을 건너뜁니다.", user_level)
-        return None
+    hallu_flags = state.get("hallucination_flags") or []
 
-    optimized_query: Optional[str] = (
-        state["queries"][-1] if state.get("queries") else None
-    )
+    tier_path  = (state.get("tier_path") or "").strip()
+    if not tier_path:
+        tier_path = _build_tier_path(state.get("log", []), final_tier)
+    is_escalated = (tier_path != "0")
 
-    row = {
-        "request_id":        request_id,
-        "user_level":        user_level,
-        "original_query":    state["question"],
-        "optimized_query":   optimized_query,
-        "final_answer":      None,                          # output 후 UPDATE
-        "tier_id":           state["search_tier"],
-        "loop_count":        state["loop_count"],
-        "ragas_f":           float(state.get("critic_score", 0.0)),
-        "ragas_ar":          float(state.get("answer_relevance_score", 0.0)),
-        "ragas_cp":          float(state.get("context_precision_score", 0.0)),
-        "is_escalated":      is_escalated,
-        "is_fallback":       is_fallback,
-        "retrieved_doc_count": len(state.get("context") or []),
-        "llm_model":         state.get("llm_provider") or "openai",
-        "execution_time_ms": execution_time_ms,
+    expected_tier_val = state.get("expected_tier", -1)
+    expected_tier_db  = expected_tier_val if expected_tier_val >= 0 else None
+
+    return {
+        "request_id":             request_id,
+        "loop_number":            loop_number,
+        "is_final":               is_final,
+        "ablation_condition":     state.get("ablation_condition") or None,
+        "query_index":            state.get("query_index") or None,
+        "disease":                state.get("disease") or None,
+        "query_level_label":      state.get("query_level_label") or None,
+        "user_level":             state.get("user_level") or "",
+        "original_query":         state["question"],
+        "optimized_query":        state["queries"][-1] if state.get("queries") else None,
+        "expected_tier":          expected_tier_db,
+        "final_tier":             final_tier,
+        "tier_path":              tier_path,
+        "is_escalated":           is_escalated,
+        "is_fallback":            is_fallback,
+        "self_correction_count":  int(state.get("self_correction_count", 0)),
+        "ragas_f":                f,
+        "ragas_ar":               ar,
+        "ragas_cp":               cp,
+        "q_total":                q_total,
+        "hallucination_detected": len(hallu_flags) > 0,
+        "hallucination_count":    len(hallu_flags),
+        "retrieved_doc_count":    len(state.get("context") or []),
+        "llm_model":              state.get("llm_provider") or "openai",
+        "execution_time_ms":      execution_time_ms,
+        "final_answer":           final_answer,
+        "fk_grade":               fk_grade,
     }
 
-    sql = """
-        INSERT INTO public.rag_audit_log (
-            request_id, user_level, original_query, optimized_query, final_answer,
-            tier_id, loop_count,
-            ragas_f, ragas_ar, ragas_cp,
-            is_escalated, is_fallback,
-            retrieved_doc_count, llm_model, execution_time_ms
-        ) VALUES (
-            %(request_id)s, %(user_level)s, %(original_query)s, %(optimized_query)s, %(final_answer)s,
-            %(tier_id)s, %(loop_count)s,
-            %(ragas_f)s, %(ragas_ar)s, %(ragas_cp)s,
-            %(is_escalated)s, %(is_fallback)s,
-            %(retrieved_doc_count)s, %(llm_model)s, %(execution_time_ms)s
-        )
-        RETURNING log_id;
-    """
 
+def _execute_insert(row: dict) -> Optional[int]:
+    """row dict를 INSERT하고 log_id를 반환한다."""
     try:
         conn = _get_conn()
         with conn.cursor() as cur:
-            cur.execute(sql, row)
+            cur.execute(_INSERT_SQL, row)
             log_id: int = cur.fetchone()[0]
+        def _fmt(v) -> str:
+            return f"{v:.3f}" if v is not None else "null"
         logger.info(
-            "[AuditLog] INSERT log_id=%d | request_id=%s | tier=%d loop=%d "
-            "F=%.3f AR=%.3f CP=%.3f escalated=%s fallback=%s",
-            log_id, request_id,
-            row["tier_id"], row["loop_count"],
-            row["ragas_f"], row["ragas_ar"], row["ragas_cp"],
-            is_escalated, is_fallback,
+            "[AuditLog] INSERT log_id=%d | rid=%s | loop=%d | is_final=%s | "
+            "cond=%s | tier=%s | F=%s AR=%s CP=%s Q=%s",
+            log_id, row["request_id"], row["loop_number"], row["is_final"],
+            row["ablation_condition"], row["tier_path"],
+            _fmt(row["ragas_f"]), _fmt(row["ragas_ar"]),
+            _fmt(row["ragas_cp"]), _fmt(row["q_total"]),
         )
         return log_id
     except Exception as exc:
         logger.error("[AuditLog] INSERT 실패: %s", exc, exc_info=True)
-        # 커넥션이 오염됐을 수 있으므로 초기화
         _local.conn = None
         return None
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# UPDATE: output_agent / fallback_node 실행 후 호출
-# ──────────────────────────────────────────────────────────────────────────────
+def save_loop_log(
+    state: GraphState,
+    request_id: str,
+    loop_number: int,
+) -> Optional[int]:
+    """중간 루프 RAGAS 결과를 INSERT한다 (is_final=False).
 
-def update_audit_log_answer(request_id: str, final_answer: str) -> None:
-    """같은 request_id의 모든 행에 번역 완료된 최종 답변을 UPDATE한다.
-
-    호출 시점: output_agent 또는 fallback_node 완료 직후.
-    한 request_id 내 여러 루프 행이 있을 수 있으나, final_answer는 마지막 답변만
-    의미 있으므로 request_id 전체에 일괄 UPDATE한다.
-
-    Args:
-        request_id:   워크플로우 전체 고유 ID (UUID 문자열)
-        final_answer: output_agent가 생성한 한국어 최종 답변
+    호출 시점: _critic_node에서 query_rewriter로 재시도/에스컬레이션할 때마다.
+    final_answer와 execution_time_ms는 NULL로 저장된다.
     """
-    sql = """
-        UPDATE public.rag_audit_log
-        SET final_answer = %(answer)s
-        WHERE request_id = %(request_id)s::uuid;
+    user_level = state.get("user_level") or ""
+    if user_level not in ("Professional", "Consumer"):
+        logger.warning("[AuditLog] user_level=%r 유효하지 않음, loop_log 스킵.", user_level)
+        return None
+
+    row = _build_row(
+        state=state,
+        request_id=request_id,
+        loop_number=loop_number,
+        is_final=False,
+        is_fallback=False,
+        execution_time_ms=None,
+        final_answer=None,
+    )
+    return _execute_insert(row)
+
+
+def save_audit_log(
+    state: GraphState,
+    request_id: str,
+    is_fallback: bool = False,
+    execution_time_ms: Optional[int] = None,
+    fk_grade: Optional[float] = None,
+) -> Optional[int]:
+    """최종 결과를 INSERT한다 (is_final=True).
+
+    호출 시점: _output_node() 또는 _fallback_node() 완료 직후.
+    fk_grade: graph.py에서 번역 전 영어 원문으로 계산해 전달한다.
     """
-    try:
-        conn = _get_conn()
-        with conn.cursor() as cur:
-            cur.execute(sql, {"answer": final_answer, "request_id": request_id})
-        logger.info("[AuditLog] UPDATE final_answer | request_id=%s", request_id)
-    except Exception as exc:
-        logger.error("[AuditLog] UPDATE 실패: %s", exc, exc_info=True)
-        _local.conn = None
+    user_level = state.get("user_level") or ""
+    if user_level not in ("Professional", "Consumer"):
+        logger.warning("[AuditLog] user_level=%r 유효하지 않음, audit_log 스킵.", user_level)
+        return None
+
+    if execution_time_ms is None:
+        start = state.get("workflow_start_time")
+        if start:
+            execution_time_ms = int((time.time() - start) * 1000)
+
+    loop_number = int(state.get("eval_count", 1))
+
+    row = _build_row(
+        state=state,
+        request_id=request_id,
+        loop_number=loop_number,
+        is_final=True,
+        is_fallback=is_fallback,
+        execution_time_ms=execution_time_ms,
+        final_answer=state.get("answer") or None,
+        fk_grade=fk_grade,
+    )
+    return _execute_insert(row)

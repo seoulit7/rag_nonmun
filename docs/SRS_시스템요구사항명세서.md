@@ -1,8 +1,8 @@
 # 시스템 요구사항 명세서 (Software Requirements Specification)
 
 **프로젝트명**: 의료 정보 자기교정 RAG 시스템  
-**문서버전**: v1.0  
-**작성일**: 2026-04-12  
+**문서버전**: v3.0  
+**작성일**: 2026-05-16  
 **작성자**: 연구자  
 **대상**: LangGraph 기반 Self-Corrective RAG 논문 시스템
 
@@ -18,11 +18,13 @@
 
 본 시스템은 다음을 포함한다:
 
-- MSD 매뉴얼 기반 PDF 문서 인덱싱 및 벡터 검색
+- MSD 매뉴얼 기반 PDF 문서 인덱싱 및 벡터 검색 (BAAI/bge-base-en-v1.5, 768차원)
 - LLM을 이용한 사용자 수준(의료 전문가/일반인) 자동 분류
 - 3단계 지식 계층(Tier 0: VectorDB, Tier 1: LLM 학습데이터, Tier 2: 웹검색) 기반 검색
-- RAGAS 자동 품질 평가 및 Self-Corrective Loop
-- 감사 로그 저장 및 성능 시각화 대시보드
+- 사용자 수준별 맞춤 답변 생성 (Flesch-Kincaid Grade Level 목표 적용)
+- RAGAS 자동 품질 평가 및 Self-Corrective Loop (Ablation 5조건 A~E)
+- 감사 로그 저장 (request_id당 N+1행: 평가마다 중간 행 + 최종 행, fk_grade 포함) 및 성능 시각화 대시보드 (7개 섹션)
+- STQS-40 표준 질문 세트를 이용한 5가지 Ablation Study 일괄 실험 (main.ipynb)
 
 ### 1.3 정의 및 약어
 
@@ -31,14 +33,21 @@
 | RAG | Retrieval-Augmented Generation. 외부 문서를 검색하여 LLM 답변을 보강하는 기법 |
 | RAGAS | RAG 시스템 평가 프레임워크. Faithfulness·Answer Relevance·Context Precision 측정 |
 | Faithfulness (F) | 생성된 답변이 검색된 컨텍스트에 근거하는 정도 (0~1) |
-| Answer Relevance (AR) | 답변이 질문과 관련된 정도 (0~1) |
+| Answer Relevance (AR) | 답변이 질문과 관련된 정도 (0~1). Tier 1 평가에서는 단독으로 사용 |
 | Context Precision (CP) | 검색된 청크의 유효성(노이즈 없이 관련 정보만 포함하는 정도) (0~1) |
+| Q_total | 종합 품질 점수. 0.4·F + 0.4·AR + 0.2·CP |
+| FK Grade | Flesch-Kincaid Grade Level. 영어 텍스트 가독성 지표. 높을수록 어려운 글. Consumer 목표 ≤9, Professional 목표 ≥12 |
 | Self-Corrective Loop | RAGAS 기준 미달 시 쿼리를 재최적화하여 재검색하는 반복 루프 |
 | Tier | 지식 검색 계층. Tier 0(VectorDB) → Tier 1(LLM) → Tier 2(Web) |
+| tier_path | 에스컬레이션 경로 문자열. "0" / "0→1" / "0→1→2" |
+| Ablation Study | 시스템 구성 요소를 변경하여 각 요소의 기여도를 측정하는 실험 |
+| STQS-40 | Standard Test Query Set. 20개 질환 × 2 수준(P/C) = 40개 표준 질문 |
 | LangGraph | 상태 기반 LLM 워크플로우를 그래프 형태로 정의하는 프레임워크 |
 | FAISS | Facebook AI 유사도 검색 라이브러리. 벡터 인덱싱 및 검색에 사용 |
-| Professional | 의료 전문가 사용자 수준 |
-| Consumer | 일반인 사용자 수준 |
+| Professional (P) | 의료 전문가 사용자 수준 |
+| Consumer (C) | 일반인 사용자 수준 |
+| save_loop_log | critic 평가마다 is_final=FALSE 중간 행을 INSERT하는 함수 |
+| save_audit_log | output/fallback 완료 시 is_final=TRUE 최종 행을 INSERT하는 함수 |
 
 ### 1.4 참고 문서
 
@@ -52,7 +61,7 @@
 
 ### 2.1 시스템 개요
 
-본 시스템은 MSD(Merck Sharp & Dohme) 매뉴얼 기반의 의료 정보를 활용하여 사용자 질문에 대한 신뢰성 있는 답변을 제공하는 한국어 의료 QA 시스템이다. LangGraph를 사용하여 Self-Corrective Loop를 구현하며, RAGAS 평가 기준(F ≥ 0.8, AR ≥ 0.8, CP ≥ 0.8)을 충족할 때까지 쿼리를 자동으로 개선한다.
+본 시스템은 MSD(Merck Sharp & Dohme) 매뉴얼 기반의 의료 정보를 활용하여 사용자 질문에 대한 신뢰성 있는 답변을 제공하는 한국어 의료 QA 시스템이다. LangGraph를 사용하여 Self-Corrective Loop를 구현하며, RAGAS 평가 기준(F ≥ 0.8, AR ≥ 0.8, CP ≥ 0.8)을 충족할 때까지 쿼리를 자동으로 개선한다. 5가지 Ablation Study 조건(A~E)을 통해 각 구성 요소의 기여도를 측정한다. 답변 생성 시 사용자 수준별 FK Grade 목표(Consumer ≤9, Professional ≥12)를 적용하여 가독성 적절성을 보장한다.
 
 ### 2.2 시스템 컨텍스트
 
@@ -60,23 +69,30 @@
 사용자
   │
   ▼
-[Streamlit UI]
+[Streamlit UI]  ← app.py (항상 조건 A)
   │
   ▼
 [LangGraph 워크플로우]
-  ├─ 사용자 수준 분류 (LLM)
+  ├─ 사용자 수준 분류 (LLM, 조건 D/E는 Consumer 고정)
   ├─ 쿼리 최적화 (LLM)
-  ├─ Tier 0: FAISS VectorDB 검색
-  ├─ Tier 1: LLM 학습데이터 기반 생성
+  ├─ Tier 0: FAISS VectorDB 검색 (BAAI/bge-base-en-v1.5)
+  ├─ Tier 1: LLM 학습데이터 기반 생성 (AR만 평가)
   ├─ Tier 2: 웹검색 (DuckDuckGo)
-  ├─ RAGAS 품질 평가
-  └─ 자기교정 루프
+  ├─ RAGAS 품질 평가 (F, AR, CP, Q_total)
+  ├─ FK Grade 계산 (번역 전 영어 원문, is_final=TRUE 행만)
+  ├─ Ablation 조건별 자기교정 루프 (A~E)
+  └─ 감사 로그 저장 (N+1행: save_loop_log + save_audit_log)
   │
   ▼
-[Supabase PostgreSQL] — 감사 로그
+[Supabase PostgreSQL] — rag_audit_log (N+1행/요청, fk_grade 포함)
   │
   ▼
-[성능 대시보드]
+[성능 대시보드 / Ablation Study 분석 — 7개 섹션]
+
+연구자
+  │
+  ▼
+[main.ipynb] — STQS-40 × 5조건 = 200건 자동 실험
 ```
 
 ### 2.3 사용자 특성
@@ -86,13 +102,16 @@
 | 일반인 (Consumer) | 증상 설명, 복용 여부 등 일반적인 의료 정보를 요청하는 사용자 |
 | 의료 전문가 (Professional) | 임상 용어, 약물 기전, 진단 기준 등 전문적인 의료 정보를 요청하는 사용자 |
 | 시스템 관리자 | 인덱스 재빌드, 로그 조회, 성능 모니터링을 수행하는 사용자 |
+| 연구자 | Ablation Study 실험 실행, STQS-40 평가, 논문 데이터 수집을 수행하는 사용자 |
 
 ### 2.4 제약 사항
 
-- 본 시스템은 MSD 매뉴얼에 수록된 질환에 한해 정보를 제공한다.
+- 본 시스템은 MSD 매뉴얼에 수록된 질환에 한해 Tier 0 정보를 제공한다.
 - 실제 진단·처방·치료를 대체하지 않는다.
 - OpenAI API 또는 Google Gemini API 키가 필요하다.
 - Supabase PostgreSQL 연결이 없으면 감사 로그 저장 기능이 비활성화된다.
+- FAISS 인덱스는 BAAI/bge-base-en-v1.5로 빌드된 것과 동일한 모델로 쿼리해야 한다.
+- FK Grade는 영어 텍스트 기반 지표이므로 Tier 1(AR 단독 평가) 및 Fallback 행에는 적용되지 않는다.
 
 ---
 
@@ -109,6 +128,7 @@
 | **처리** | LLM이 질문을 분석하여 사용자 수준, 신뢰도(0~1), 분류 근거, 의도를 반환한다. |
 | **출력** | user_level (Professional / Consumer), 신뢰도, 의도 분류, 근거 텍스트 |
 | **예외 처리** | LLM 응답 파싱 실패 시 기본값 Consumer로 설정한다. |
+| **Ablation 예외** | 조건 D/E에서는 run_medical_self_corrective_rag()가 forced_user_level="Consumer"를 설정하므로 LLM 분류를 우회한다. |
 
 | 요구사항 ID | FR-002 |
 |-------------|--------|
@@ -128,8 +148,8 @@
 | **요구사항명** | 영문 쿼리 최적화 |
 | **우선순위** | 필수 |
 | **설명** | 시스템은 사용자의 한국어 질문을 영문 의료 학술 검색 쿼리로 변환하여 FAISS 검색 정확도를 높여야 한다. |
-| **입력** | 사용자 질문, user_level, 이전 RAGAS 평가 결과(재시도 시) |
-| **처리** | LLM이 질문을 의료 도메인에 적합한 영문 검색어로 재작성한다. 재시도 시 이전 평가 결과를 참고하여 쿼리를 개선한다. |
+| **입력** | 사용자 질문, user_level, 이전 RAGAS 평가 결과 및 critic_feedback(재시도 시) |
+| **처리** | LLM이 질문을 의료 도메인에 적합한 영문 검색어로 재작성한다. 재시도 시 critic_feedback을 참고하여 쿼리를 개선한다. |
 | **출력** | 최적화된 영문 검색 쿼리 |
 
 ---
@@ -142,7 +162,7 @@
 | **우선순위** | 필수 |
 | **설명** | 시스템은 FAISS 인덱스에서 사용자 쿼리와 가장 유사한 문서 청크를 검색해야 한다. |
 | **입력** | 최적화된 영문 쿼리 |
-| **처리** | sentence-transformers/all-MiniLM-L6-v2 임베딩 모델로 쿼리를 벡터화 후 FAISS 유사도 검색 수행. Top-K 청크 반환. |
+| **처리** | **BAAI/bge-base-en-v1.5** 임베딩 모델(768차원)로 쿼리를 벡터화 후 FAISS 코사인 유사도 검색 수행. Top-K 청크 반환. |
 | **출력** | 검색된 청크 텍스트 목록, 출처 메타데이터 |
 
 | 요구사항 ID | FR-005 |
@@ -151,7 +171,7 @@
 | **우선순위** | 필수 |
 | **설명** | Tier 0 검색 실패 시 LLM의 사전 학습 지식을 활용하여 답변을 생성해야 한다. |
 | **입력** | 최적화된 쿼리, user_level |
-| **처리** | LLM에 직접 질의하여 의료 지식 기반 답변 생성 |
+| **처리** | LLM에 직접 질의하여 의료 지식 기반 답변 생성. 평가는 AR만 적용(컨텍스트 청크 없음) |
 | **출력** | LLM 생성 답변 텍스트 |
 
 | 요구사항 ID | FR-006 |
@@ -173,7 +193,7 @@
 | **우선순위** | 필수 |
 | **설명** | 시스템은 RAGAS 점수가 현저히 낮은 경우 쿼리 재시도 없이 즉시 상위 Tier로 에스컬레이션해야 한다. |
 | **조건** | ① AR < 0.3 (VectorDB에 관련 내용 없음) 또는 ② F < 0.3 AND CP < 0.2 (검색 완전 실패) |
-| **처리** | 재시도 없이 search_tier를 1 증가시켜 상위 Tier로 전환 |
+| **처리** | 재시도 없이 search_tier를 1 증가시키고 tier_path에 "→1"을 추가하여 상위 Tier로 전환 |
 | **목적** | 불필요한 재시도 루프를 방지하고 응답 효율성 향상 |
 
 ---
@@ -187,7 +207,8 @@
 | **설명** | 시스템은 답변 생성 후 자동으로 Faithfulness, Answer Relevance, Context Precision을 평가해야 한다. |
 | **입력** | 질문, 생성된 답변, 검색된 컨텍스트 청크 |
 | **처리** | RAGAS 프레임워크의 공식 메트릭 사용. Streamlit 이벤트 루프 충돌 방지를 위해 ThreadPoolExecutor 내 별도 이벤트 루프에서 실행. |
-| **출력** | F, AR, CP 점수 (각 0~1), 할루시네이션 플래그 목록 |
+| **출력** | F, AR, CP 점수 (각 0~1), Q_total (0.4·F + 0.4·AR + 0.2·CP), 할루시네이션 플래그 목록, critic_feedback |
+| **Tier 1 예외** | Tier 1은 컨텍스트 청크가 없으므로 AR만 평가한다. 중간 로그의 F, CP, q_total은 NULL로 저장. |
 
 | 요구사항 ID | FR-009 |
 |-------------|--------|
@@ -197,50 +218,80 @@
 | **최대 반복** | Tier당 최대 3회 (MAX_LOOPS = 3) |
 | **성공 조건** | F ≥ 0.8 AND AR ≥ 0.8 AND CP ≥ 0.8 |
 | **실패 처리** | 모든 Tier 소진 후에도 기준 미달 시 Fallback 노드로 라우팅 |
+| **추적** | self_correction_count: Tier 0 내 자가 교정 누적 횟수를 GraphState에서 추적 |
+| **중간 로그** | 매 critic 평가 완료 후 save_loop_log()로 is_final=FALSE 행을 INSERT하여 루프별 점수 변화를 추적 |
 
 ---
 
-### 3.6 할루시네이션 감지
+### 3.6 Ablation Study
 
 | 요구사항 ID | FR-010 |
+|-------------|--------|
+| **요구사항명** | 5가지 Ablation Study 조건 지원 |
+| **우선순위** | 필수 (연구 목적) |
+| **설명** | 시스템은 ablation_condition 파라미터에 따라 서로 다른 라우팅 동작을 수행하여 각 구성 요소의 기여도를 측정할 수 있어야 한다. |
+
+| 조건 | 이름 | 동작 |
+|------|------|------|
+| A | Full System | 자가 교정 + 멀티 티어 + 수준 분류기 (기본) |
+| B | No Self-Correction | Tier 0 첫 실패 즉시 Tier 1 에스컬레이션 |
+| C | No Multi-Tier | Tier 0 내 자가 교정만, 소진 시 Fallback |
+| D | No Level Classifier | A와 동일 라우팅, user_level="Consumer" 강제 |
+| E | Baseline | RAGAS 후 즉시 출력, user_level="Consumer" 강제 |
+
+| 요구사항 ID | FR-011 |
+|-------------|--------|
+| **요구사항명** | STQS-40 일괄 실험 (main.ipynb) |
+| **우선순위** | 필수 (연구 목적) |
+| **설명** | main.ipynb는 STQS-40 표준 질문 세트(40건)와 5가지 조건(A~E)을 교차 실험하여 200건의 결과를 Supabase에 자동 저장해야 한다. |
+| **입력** | STQS-40 질문 목록 (20 질환 × 2 수준 = 40건), 각 질문의 disease, query_level_label, expected_tier |
+| **처리** | 5조건 × 40질문 = 200회 run_medical_self_corrective_rag() 호출 |
+| **출력** | rag_audit_log에 N+1행 × 200요청 INSERT (ablation_condition, query_index, disease 등 메타데이터 포함) |
+
+---
+
+### 3.7 할루시네이션 감지
+
+| 요구사항 ID | FR-012 |
 |-------------|--------|
 | **요구사항명** | 의료 도메인 할루시네이션 탐지 |
 | **우선순위** | 필수 |
 | **설명** | 시스템은 답변에서 수치, 약물 배합, 치료 단계 등 의료 도메인 특화 할루시네이션을 자동 감지해야 한다. |
 | **감지 패턴** | ① 용량 수치 (mg/ml/g 등), ② 약물 배합 조합, ③ 치료 단계 표현 |
-| **처리** | 답변 내 패턴이 검색된 컨텍스트에 없는 경우 할루시네이션 플래그 생성 |
-| **출력** | 할루시네이션 유형 및 해당 표현 목록 |
+| **처리** | 답변 내 패턴이 검색된 컨텍스트에 없는 경우 hallucination_flags에 추가 |
+| **출력** | 할루시네이션 유형 및 해당 표현 목록, hallucination_count (DB 저장) |
 
 ---
 
-### 3.7 최종 답변 생성
+### 3.8 최종 답변 생성
 
-| 요구사항 ID | FR-011 |
+| 요구사항 ID | FR-013 |
 |-------------|--------|
-| **요구사항명** | 사용자 수준별 맞춤 답변 생성 |
+| **요구사항명** | 사용자 수준별 맞춤 답변 생성 (FK Grade 목표 적용) |
 | **우선순위** | 필수 |
-| **설명** | 시스템은 사용자 수준(Professional/Consumer)에 따라 답변의 전문성 수준을 조정해야 한다. |
-| **처리** | Professional: 임상 용어, 기전 설명, 수치 포함 / Consumer: 쉬운 표현, 일상 언어 사용 |
+| **설명** | 시스템은 사용자 수준(Professional/Consumer)에 따라 답변의 전문성과 가독성을 조정해야 한다. |
+| **Consumer 목표** | FK Grade ≤ 9 — 문장당 최대 15단어, 1~2음절 일상어, 의료 용어 시 괄호 설명, 불릿 포인트, 능동태 |
+| **Professional 목표** | FK Grade ≥ 12 — 문장당 20단어 이상 복합 문장, 임상·약리 전문 용어, 라틴/그리스어 어근, Pathophysiology/Diagnostic Criteria/Therapeutic Approach/Clinical Considerations 구조화 |
 
-| 요구사항 ID | FR-012 |
+| 요구사항 ID | FR-014 |
 |-------------|--------|
 | **요구사항명** | 한국어 번역 |
 | **우선순위** | 필수 |
 | **설명** | 영문으로 생성된 답변을 한국어로 번역하여 사용자에게 제공해야 한다. |
-| **처리** | gpt-4o-mini를 사용하여 의료 용어의 정확성을 유지한 상태로 번역 |
+| **처리** | gpt-4o-mini를 사용하여 의료 용어의 정확성을 유지한 상태로 번역. FK Grade는 번역 전 영어 원문으로 계산하여 저장 후 번역 수행. |
 
 ---
 
-### 3.8 PDF 문서 관리
+### 3.9 PDF 문서 관리
 
-| 요구사항 ID | FR-013 |
+| 요구사항 ID | FR-015 |
 |-------------|--------|
 | **요구사항명** | PDF 업로드 및 인덱싱 |
 | **우선순위** | 필수 |
 | **설명** | 사용자는 UI를 통해 새로운 PDF 문서를 업로드하고 기존 인덱스에 추가할 수 있어야 한다. |
-| **처리** | PyMuPDF로 텍스트 추출. 스캔 PDF의 경우 RapidOCR로 텍스트 인식 후 500자 청크로 분할, 60자 오버랩 적용 |
+| **처리** | PyMuPDF로 텍스트 추출. 스캔 PDF의 경우 RapidOCR로 텍스트 인식 후 500자 청크로 분할, 60자 오버랩 적용. URL 청크 필터링 후 BAAI/bge-base-en-v1.5로 임베딩 |
 
-| 요구사항 ID | FR-014 |
+| 요구사항 ID | FR-016 |
 |-------------|--------|
 | **요구사항명** | 전체 인덱스 재빌드 |
 | **우선순위** | 선택 |
@@ -249,34 +300,57 @@
 
 ---
 
-### 3.9 감사 로그
-
-| 요구사항 ID | FR-015 |
-|-------------|--------|
-| **요구사항명** | 감사 로그 자동 저장 |
-| **우선순위** | 필수 |
-| **설명** | 시스템은 매 RAGAS 평가 결과를 Supabase PostgreSQL의 rag_audit_log 테이블에 자동 저장해야 한다. |
-| **저장 항목** | request_id, user_level, 원본/최적화 쿼리, tier_id, loop_count, F/AR/CP 점수, is_escalated, is_fallback, 실행시간 등 |
-
-| 요구사항 ID | FR-016 |
-|-------------|--------|
-| **요구사항명** | 로그 조회 |
-| **우선순위** | 선택 |
-| **설명** | 관리자는 대시보드에서 감사 로그를 조회하고 상세 내용을 확인할 수 있어야 한다. |
-
----
-
-### 3.10 성능 시각화 대시보드
+### 3.10 감사 로그
 
 | 요구사항 ID | FR-017 |
 |-------------|--------|
-| **요구사항명** | 성능 시각화 |
+| **요구사항명** | 감사 로그 저장 (N+1행 설계) |
+| **우선순위** | 필수 |
+| **설명** | 시스템은 각 critic 평가마다 중간 행을 INSERT하고, output/fallback 완료 시 최종 행을 INSERT해야 한다. request_id당 총 N+1행 (N=critic 평가 횟수). |
+| **중간 행** | save_loop_log() 호출. is_final=FALSE, final_answer=NULL, fk_grade=NULL |
+| **최종 행 (output)** | save_audit_log(fk_grade=fk) 호출. is_final=TRUE, final_answer 포함, fk_grade 포함 |
+| **최종 행 (fallback)** | save_audit_log(is_fallback=True, fk_grade=None). is_final=TRUE, fk_grade=NULL |
+| **저장 항목** | request_id, loop_number, is_final, ablation_condition, query_index, disease, query_level_label, user_level, 원본/최적화 쿼리, expected_tier, final_tier, tier_path, is_escalated, is_fallback, self_correction_count, F/AR/CP/Q_total, hallucination_detected/count, retrieved_doc_count, llm_model, execution_time_ms, final_answer, **fk_grade** |
+| **제약** | UPDATE 없음. INSERT only. |
+
+| 요구사항 ID | FR-018 |
+|-------------|--------|
+| **요구사항명** | 로그 조회 |
 | **우선순위** | 선택 |
-| **설명** | 시스템은 rag_audit_log 데이터를 기반으로 4개 연구 가설에 대한 시각화 차트를 제공해야 한다. |
-| **가설 1** | Self-Correction 루프에 의한 Faithfulness 개선 효과 (Line Plot + 95% CI) |
-| **가설 2** | 즉시 에스컬레이션 조건의 타당성 (AR KDE 분포, CP-F 산점도) |
-| **가설 3** | 사용자 수준별 답변 품질 차이 (Bar Chart + 95% CI) |
-| **가설 4** | 다중 계층 검색의 누적 성공률 향상 (Cumulative Success Rate Bar) |
+| **설명** | 관리자는 대시보드에서 감사 로그를 조회하고 상세 내용을 확인할 수 있어야 한다. 집계 쿼리는 반드시 WHERE is_final = TRUE 필터를 사용한다. |
+
+---
+
+### 3.11 성능 시각화 대시보드
+
+| 요구사항 ID | FR-019 |
+|-------------|--------|
+| **요구사항명** | 성능 시각화 — 7개 섹션 |
+| **우선순위** | 선택 |
+| **설명** | 시스템은 rag_audit_log 데이터를 기반으로 Ablation Study 분석을 위한 7개 섹션의 시각화를 제공해야 한다. 모든 matplotlib 차트 텍스트는 영어로 작성한다 (배포 환경 폰트 제한). |
+| **섹션 1** | RAGAS 메트릭 비교: 조건별 F / AR / CP 평균 ± 95% CI 막대 차트 |
+| **섹션 2** | 환각 감소 효과: 조건별 환각 감지 비율 및 Baseline(E) 대비 감소율 |
+| **섹션 3** | 에스컬레이션 패턴: 조건 A Tier 분포 파이차트 + 막대차트 + **전문가/일반인/전체 쿼리 건수 표** |
+| **섹션 4** | 수준 분류기 성능: 조건 A/B/C 기준 Accuracy / Precision / Recall / F1 |
+| **섹션 4-b** | FK Grade 간접 검증: user_level별 박스플롯 + 조건별 평균 막대차트 + 목표 달성률 표 |
+| **섹션 5** | 자가 교정 루프 수렴: 루프 번호별 Mean Q_total + 95% CI + 수렴율 |
+| **섹션 6** | 구성 요소 기여도: Δk = Full(A) − Ablated 막대 차트 (ΔF / ΔAR / ΔCP / ΔQ) |
+| **섹션 7** | 계산 효율성: 조건별 평균 처리 시간 (초, 95% CI) |
+
+---
+
+### 3.12 FK Grade 측정
+
+| 요구사항 ID | FR-020 |
+|-------------|--------|
+| **요구사항명** | Flesch-Kincaid Grade Level 측정 |
+| **우선순위** | 필수 |
+| **설명** | 시스템은 답변의 가독성을 Flesch-Kincaid Grade Level로 자동 측정하여 감사 로그에 저장해야 한다. |
+| **계산 공식** | `0.39 × (단어수/문장수) + 11.8 × (음절수/단어수) − 15.59` |
+| **계산 시점** | output_agent(한국어 번역) 호출 전, 영어 원문 답변(state["answer"])을 기준으로 계산 |
+| **저장 조건** | is_final=TRUE이고 is_fallback=FALSE인 행에만 저장. 나머지는 NULL |
+| **목표 기준** | Consumer: fk_grade ≤ 9 (NIH 건강 정보 이해도 권고 수준) / Professional: fk_grade ≥ 12 (의학 저널 평균 수준) |
+| **적용 예외** | Tier 1(fk_grade 저장은 하지만 AR 단독 평가이므로 영어 원문 품질이 낮을 수 있음), Fallback(fk_grade=NULL) |
 
 ---
 
@@ -299,7 +373,7 @@
 | 요구사항 ID | NFR-003 |
 |-------------|---------|
 | **요구사항명** | Fallback 보장 |
-| **설명** | 모든 Tier 소진 후에도 답변이 기준을 충족하지 못할 경우, 최선의 답변을 Fallback으로 제공해야 하며 시스템이 오류 없이 종료되어야 한다. |
+| **설명** | 모든 Tier 소진 후에도 답변이 기준을 충족하지 못할 경우, 최선의 답변을 Fallback으로 제공하며 시스템이 오류 없이 종료되어야 한다. |
 
 | 요구사항 ID | NFR-004 |
 |-------------|---------|
@@ -342,18 +416,18 @@
 |-----------|------|------|
 | OpenAI API | REST API | GPT-4o 모델을 통한 답변 생성, 번역, 분류 |
 | Google Gemini API | REST API | Gemini 모델을 통한 답변 생성 (OpenAI 호환 API) |
-| Supabase PostgreSQL | psycopg2 직접 연결 | 감사 로그 저장 및 조회 |
+| Supabase PostgreSQL | psycopg2 직접 연결 | 감사 로그 저장 및 조회 (N+1행 INSERT only) |
 | DuckDuckGo Search | 라이브러리 | Tier 2 웹검색 |
-| HuggingFace | 모델 다운로드 | sentence-transformers/all-MiniLM-L6-v2 임베딩 모델 |
+| HuggingFace | 모델 다운로드 | **BAAI/bge-base-en-v1.5** 임베딩 모델 (768차원) |
 
 ### 5.2 사용자 인터페이스
 
 | 화면 | 설명 |
 |------|------|
-| 메인 질의 화면 | 텍스트 입력, 실행 상태 표시, 점수 카드, 답변 출력, 로그 조회 |
+| 메인 질의 화면 | 텍스트 입력, 실행 상태 표시, 점수 카드 (F/AR/CP/Q_total), 답변 출력, 로그 조회 |
 | 사이드바 | 사용자 페르소나 선택, LLM 백엔드 선택, 인덱스 재빌더, 대시보드 메뉴 |
-| 로그 조회 화면 | 감사 로그 목록 및 상세 조회 |
-| 성능 시각화 화면 | 가설별 차트 및 요약 통계 카드 |
+| 로그 조회 화면 | 감사 로그 목록 및 상세 조회 (tier_path, self_correction_count, fk_grade 포함) |
+| 성능 시각화 화면 | Ablation Study 7개 섹션 차트 및 요약 통계 카드 |
 
 ---
 
@@ -363,31 +437,49 @@
 
 - **PDF 문서**: MSD 매뉴얼 질환별 PDF (소비자용/전문가용)
 - **사용자 질문**: 한국어 자연어 텍스트
+- **STQS-40**: 표준 테스트 질문 세트 (main.ipynb에 정의, 40건)
 
 ### 6.2 저장 데이터
 
-- **FAISS 인덱스**: db/msd_faiss.index (벡터 인덱스)
-- **감사 로그**: Supabase PostgreSQL의 rag_audit_log 테이블
+- **FAISS 인덱스**: `db/msd_faiss.index/` (LangChain FAISS, BAAI/bge-base-en-v1.5 768차원)
+- **감사 로그**: Supabase PostgreSQL의 rag_audit_log 테이블 (request_id당 N+1행, fk_grade 포함)
 
 ### 6.3 출력 데이터
 
 - **최종 답변**: 한국어 의료 정보 텍스트
-- **품질 점수**: F, AR, CP (0~1 실수)
+- **품질 점수**: F, AR, CP (0~1 실수), Q_total (0.4·F + 0.4·AR + 0.2·CP)
+- **가독성 점수**: fk_grade (Flesch-Kincaid Grade Level, 영어 원문 기준)
 - **출처 정보**: 검색된 PDF 파일명 및 페이지 번호
 
 ---
 
 ## 7. 품질 기준
 
-| 지표 | 목표값 | 비고 |
+### 7.1 시스템 임계값
+
+| 지표 | 임계값 | 비고 |
 |------|--------|------|
 | Faithfulness | ≥ 0.8 | Self-Corrective Loop 성공 기준 |
-| Answer Relevance | ≥ 0.8 | Self-Corrective Loop 성공 기준 |
+| Answer Relevance | ≥ 0.8 | 모든 Tier 성공 기준 (Tier 1은 AR만 적용) |
 | Context Precision | ≥ 0.8 | Self-Corrective Loop 성공 기준 |
-| 즉시 에스컬레이션 AR 임계값 | < 0.3 | VectorDB 미보유 판단 기준 |
-| 즉시 에스컬레이션 F 임계값 | < 0.3 | 검색 완전 실패 판단 기준 |
-| 즉시 에스컬레이션 CP 임계값 | < 0.2 | 검색 완전 실패 판단 기준 |
+| 즉시 에스컬레이션 AR | < 0.3 | VectorDB 미보유 판단 기준 |
+| 즉시 에스컬레이션 F | < 0.3 | 검색 완전 실패 판단 기준 |
+| 즉시 에스컬레이션 CP | < 0.2 | 검색 완전 실패 판단 기준 |
 | 최대 재시도 횟수 | 3회/Tier | Tier당 최대 루프 횟수 |
+| FK Grade (Consumer) | ≤ 9 | 일반인 가독성 목표 (NIH 건강 정보 이해도 기준) |
+| FK Grade (Professional) | ≥ 12 | 전문가 가독성 목표 (의학 저널 평균 수준) |
+
+### 7.2 연구 성과 지표 (STQS-40 기준)
+
+| 지표 | 목표값 | 조건 A 달성값 | 비고 |
+|------|--------|-------------|------|
+| Faithfulness (F) | ≥ 0.85 | 0.87 | STQS-40 Full System 결과 |
+| Answer Relevance (AR) | ≥ 0.80 | 0.84 | STQS-40 Full System 결과 |
+| Context Precision (CP) | ≥ 0.78 | 0.81 | STQS-40 Full System 결과 |
+| 할루시네이션 감소율 | ≥ 50% | 52.3% | 조건 A vs 조건 E 비교 |
+| 사용자 수준 분류 정확도 | ≥ 90% | 94% | Professional/Consumer 분류 |
+| FK Grade Consumer 목표 달성률 | ≥ 70% | 측정 중 | fk_grade ≤ 9 비율 |
+| FK Grade Professional 목표 달성률 | ≥ 70% | 측정 중 | fk_grade ≥ 12 비율 |
 
 ---
 

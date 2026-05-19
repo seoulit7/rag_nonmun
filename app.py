@@ -9,7 +9,7 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 settings.setup_logging()
-from medical_rag_graph import run_medical_self_corrective_rag
+from graph import run_medical_self_corrective_rag
 from ui import (
     SESSION_DEFAULTS,
     render_sidebar,
@@ -71,6 +71,7 @@ if st.button("질문 제출", type="primary"):
                         forced_user_level=forced,
                         step_callback=on_step,
                         llm_provider=prov,
+                        ablation_condition="A",   # app.py는 항상 Full System
                     )
                     had_fallback = not (
                         final_state.get("critic_score", 0.0) >= settings.FAITHFULNESS_THRESHOLD

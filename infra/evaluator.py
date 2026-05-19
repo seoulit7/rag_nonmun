@@ -15,6 +15,42 @@ from ragas.metrics.collections.faithfulness import Faithfulness
 logger = logging.getLogger(__name__)
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Flesch-Kincaid Grade Level (영어 원문 기준)
+# 공식: 0.39*(words/sentences) + 11.8*(syllables/words) - 15.59
+# 번역 전 영어 RAG 답변에 대해 계산한다.
+# Consumer 목표: ≤ 9  /  Professional 기준: ≥ 12
+# ──────────────────────────────────────────────────────────────────────────────
+def _syllables_en(word: str) -> int:
+    """영어 단어의 음절 수를 근사 계산한다."""
+    import re
+    word = word.lower().rstrip(".,!?;:'\"")
+    if not word:
+        return 0
+    word = re.sub(r"e$", "", word)          # 묵음 e 제거
+    count = len(re.findall(r"[aeiou]+", word))
+    return max(1, count)
+
+
+def flesch_kincaid_grade_en(text: str) -> float:
+    """영어 텍스트의 Flesch-Kincaid Grade Level을 계산한다.
+
+    번역 전 영어 원문(state['answer'])을 인자로 받아야 한다.
+    """
+    import re
+    if not text or not text.strip():
+        return 0.0
+    sentences = [s.strip() for s in re.split(r"[.!?]", text) if s.strip()]
+    words     = re.findall(r"\b[a-zA-Z]+\b", text)
+
+    n_sent = max(len(sentences), 1)
+    n_word = max(len(words), 1)
+    n_syl  = sum(_syllables_en(w) for w in words)
+
+    grade = 0.39 * (n_word / n_sent) + 11.8 * (n_syl / n_word) - 15.59
+    return round(max(0.0, grade), 3)
+
+
 class OfficialRagasScores(NamedTuple):
     faithfulness: float
     answer_relevance: float
@@ -110,7 +146,16 @@ def compute_official_ragas_scores(
                 logger.warning("ContextPrecision 평가 실패: %s", e, exc_info=True)
                 return 0.0
 
-        ff, ar, cp = await asyncio.gather(_score_faith(), _score_arel(), _score_cpre())
+        try:
+            ff, ar, cp = await asyncio.gather(_score_faith(), _score_arel(), _score_cpre())
+        finally:
+            # httpx AsyncClient를 루프 종료 전에 명시적으로 닫아
+            # "Event loop is closed" 경고를 방지한다.
+            try:
+                await eval_client.aclose()
+            except Exception:
+                pass
+
         logger.warning("[RAGAS] scores F=%.3f AR=%.3f CP=%.3f | q=%r | a=%r | ctx=%d",
                        ff, ar, cp, q[:60], a[:60], len(ctx_list))
 
@@ -133,6 +178,17 @@ def compute_official_ragas_scores(
         try:
             return new_loop.run_until_complete(_run_all())
         finally:
+            # pending 태스크를 모두 정리한 후 루프를 닫아
+            # "Event loop is closed" 경고를 방지한다.
+            try:
+                pending = asyncio.all_tasks(new_loop)
+                if pending:
+                    new_loop.run_until_complete(
+                        asyncio.gather(*pending, return_exceptions=True)
+                    )
+                new_loop.run_until_complete(new_loop.shutdown_asyncgens())
+            except Exception:
+                pass
             new_loop.close()
 
     try:

@@ -10,7 +10,7 @@ from ui.dashboard.log_query import PAGE_SIZE, fetch_logs
 
 # RAGAS 임계값 (색상 기준)
 _F_OK  = 0.8
-_AR_OK = 0.7
+_AR_OK = 0.8
 _CP_OK = 0.8
 
 
@@ -92,7 +92,7 @@ def render_list() -> None:
         "user_level":       "수준",
         "original_query":   "원본 질문",
         "tier_label":       "Tier",
-        "loop_count":       "Loop",
+        "loop_number":      "Loop",
         "ragas_f":          "F",
         "ragas_ar":         "AR",
         "ragas_cp":         "CP",

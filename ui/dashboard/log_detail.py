@@ -6,7 +6,7 @@ import streamlit as st
 from ui.dashboard.log_query import TIER_LABEL, fetch_detail
 
 _F_OK  = 0.8
-_AR_OK = 0.7
+_AR_OK = 0.8
 _CP_OK = 0.8
 
 
@@ -58,7 +58,7 @@ def render_detail(request_id: str) -> None:
 
     show_cols = {
         "tier_label":       "Tier",
-        "loop_count":       "Loop",
+        "loop_number":      "Loop",
         "ragas_f":          "F",
         "ragas_ar":         "AR",
         "ragas_cp":         "CP",
@@ -120,11 +120,11 @@ def _render_escalation_summary(loops_df) -> None:
     for _, row in loops_df.iterrows():
         if not row.get("is_escalated"):
             continue
-        tier  = row["tier_id"]
+        tier  = row["final_tier"]
         ar    = row.get("ragas_ar", 0.0) or 0.0
         f_val = row.get("ragas_f",  0.0) or 0.0
         cp    = row.get("ragas_cp", 0.0) or 0.0
-        loop  = row["loop_count"]
+        loop  = row["loop_number"]
 
         if tier == 0 and ar < 0.3:
             msgs.append(f"Tier 0 · Loop {loop} — AR={ar:.3f} < 0.3 → 즉시 에스컬레이션")
