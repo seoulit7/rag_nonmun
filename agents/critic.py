@@ -30,8 +30,10 @@ def critic_agent(state: GraphState) -> GraphState:
     raw_answer = _SUMMARY_PREFIX.sub("", state["answer"]).strip()
     context_chunks = state["context"]
     eval_query = state["queries"][-1] if state["queries"] else state["question"]
+    # AR은 첫 번째 쿼리로 고정: 재시도마다 쿼리가 바뀌어도 질문 의도는 동일
+    ar_query = state["queries"][0] if state["queries"] else state["question"]
 
-    official = compute_official_ragas_scores(eval_query, raw_answer, context_chunks)
+    official = compute_official_ragas_scores(eval_query, raw_answer, context_chunks, ar_query=ar_query)
 
     state["critic_score"] = official.faithfulness
     state["answer_relevance_score"] = official.answer_relevance

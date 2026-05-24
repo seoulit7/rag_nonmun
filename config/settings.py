@@ -130,7 +130,7 @@ def _env_int(key: str, default: int) -> int:
 
 CHUNK_MAX_CHARS = _env_int("MEDICAL_RAG_CHUNK_MAX_CHARS", 500)
 CHUNK_OVERLAP = _env_int("MEDICAL_RAG_CHUNK_OVERLAP", 60)
-RAG_TOP_K = max(1, _env_int("MEDICAL_RAG_TOP_K", 2))
+RAG_TOP_K = max(1, _env_int("MEDICAL_RAG_TOP_K", 5))
 
 OPENAI_API_KEY = get_openai_api_key()
 GEMINI_OPENAI_COMPAT_BASE_URL = _env(

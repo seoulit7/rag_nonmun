@@ -25,6 +25,10 @@ class GraphState(TypedDict):
     self_correction_count: int        # Tier 0 자가 교정 누적 횟수
     eval_count: int                   # critic 평가 전체 누적 횟수 (루프 번호 추적용)
 
+    # ── Best Answer 추적 ──────────────────────────────────────────────────────
+    best_answer: str                  # 루프 전체에서 Q_total이 가장 높은 답변
+    best_q_total: float               # 해당 답변의 Q_total (0.4*F + 0.4*AR + 0.2*CP)
+
     # ── 시스템 정보 ────────────────────────────────────────────────────────────
     llm_provider: str
     workflow_start_time: float        # time.time() 워크플로우 시작 시각

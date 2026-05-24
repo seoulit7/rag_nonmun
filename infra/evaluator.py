@@ -51,6 +51,71 @@ def flesch_kincaid_grade_en(text: str) -> float:
     return round(max(0.0, grade), 3)
 
 
+# ── Consumer FK Grade 의학 용어 마스킹 (음절 왜곡 제거) ───────────────────────
+# 패턴 1: 그리스/라틴 의학 접미사 (-itis, -ology, -osis, -oma 등)
+_PURE_FK_SUFFIX = re.compile(
+    r"\b\w+(?:itis|ology|ectomy|plasty|oscopy|otomy|ostomy|algia|pathy"
+    r"|emia|uria|graphy|trophy|genesis|lysis|osis|oma)\b",
+    re.IGNORECASE,
+)
+# 패턴 2: 소유격 병명 (Alzheimer's disease, Parkinson's syndrome 등)
+_PURE_FK_EPONYM = re.compile(r"\b[A-Z][a-z]+'s\s+(?:disease|syndrome|disorder)\b")
+# 패턴 3: 10자 이상 단어 (cardiovascular, bronchoconstriction, medication 등)
+_PURE_FK_LONG   = re.compile(r"\b[A-Za-z]{10,}\b")
+# 패턴 4: FAISS 원문 빈도 기반 명시 목록 (6-9자, 접미사·길이 패턴 미탐지)
+_PURE_FK_EXPLICIT = frozenset({
+    # Cardiovascular
+    "hypertension", "coronary",    "myocardial",  "infarction",
+    "arrhythmia",   "cholesterol", "angiotensin", "ischemic",
+    "vascular",     "diastolic",   "cerebral",
+    # Respiratory
+    "pulmonary",    "obstructive", "respiratory", "pneumonia",
+    "bronchospasm", "emphysema",   "influenza",
+    # Metabolic / Endocrine
+    "diabetes",     "mellitus",    "metabolic",   "endocrine",
+    "deficiency",   "potassium",   "estrogen",    "progesterone",
+    "creatinine",   "metformin",
+    # Oncology
+    "carcinoma",    "colorectal",  "chemotherapy","tamoxifen",
+    "metastatic",   "lymphoma",    "sarcoma",     "melanoma",
+    # Neurology / Psychiatry
+    "dementia",     "alzheimer",   "depression",  "depressive",
+    "neurologic",   "cognitive",   "serotonin",   "dopamine",
+    # Immunology / Inflammation
+    "inflammatory", "inflammation","bacterial",   "antibiotics",
+    "antibiotic",   "neutrophil",  "hormonal",
+    # General medical
+    "receptor",     "receptors",   "inhibitor",   "diagnostic",
+    "impairment",   "mortality",   "hemorrhage",  "abdominal",
+    # 6-9자 고빈도 의학 용어 (3음절 이상, 패턴 1·3 미탐지)
+    "nausea",       "mucosa",      "oxygen",
+    "therapy",      "surgery",     "cardiac",     "calcium",
+    "insulin",      "vitamin",     "hepatic",     "urinary",
+    "aspirin",      "mucosal",     "medicine",    "bacteria",
+    "molecule",     "antibody",    "nutrient",    "cellular",
+    "clinical",     "physical",    "surgical",
+    "infection",    "condition",   "procedure",   "physician",
+    "ibuprofen",
+})
+_PURE_FK_EXPLICIT_PAT = re.compile(
+    r"\b(?:" + "|".join(sorted(_PURE_FK_EXPLICIT, key=len, reverse=True)) + r")\b",
+    re.IGNORECASE,
+)
+
+
+def get_pure_fk_grade(text: str) -> float:
+    """의학 전문 용어를 'it'으로 마스킹한 순수 문장 구조의 FK Grade를 반환한다.
+
+    Consumer 답변의 실제 가독성을 측정한다. (의학 용어 음절 수 왜곡 제거)
+    4단계 마스킹: 접미사+oma → 소유격 병명 → 10자 이상 → FAISS 빈도 기반 명시 목록
+    """
+    masked = _PURE_FK_SUFFIX.sub("it", text)
+    masked = _PURE_FK_EPONYM.sub("it", masked)
+    masked = _PURE_FK_LONG.sub("it", masked)
+    masked = _PURE_FK_EXPLICIT_PAT.sub("it", masked)
+    return flesch_kincaid_grade_en(masked)
+
+
 class OfficialRagasScores(NamedTuple):
     faithfulness: float
     answer_relevance: float
@@ -103,8 +168,11 @@ def compute_official_ragas_scores(
     question: str,
     answer_body: str,
     context_chunks: Sequence[str],
+    ar_query: str = None,
 ) -> OfficialRagasScores:
     q = (question or "").strip()[:500]
+    # AR은 질문 의도가 고정된 첫 번째 쿼리로 평가 (재시도마다 쿼리가 바뀌면 AR이 폭락)
+    q_ar = (ar_query or question or "").strip()[:500]
     a = (answer_body or "").strip()[:settings.RAGAS_ANSWER_MAX_CHARS]
     ctx_list = _prep_contexts(context_chunks)
 
@@ -132,7 +200,7 @@ def compute_official_ragas_scores(
 
         async def _score_arel():
             try:
-                r = await arel.ascore(user_input=q, response=a)
+                r = await arel.ascore(user_input=q_ar, response=a)
                 return _safe_unit(r.value)
             except Exception as e:
                 logger.warning("AnswerRelevancy 평가 실패: %s", e, exc_info=True)
@@ -156,8 +224,8 @@ def compute_official_ragas_scores(
             except Exception:
                 pass
 
-        logger.warning("[RAGAS] scores F=%.3f AR=%.3f CP=%.3f | q=%r | a=%r | ctx=%d",
-                       ff, ar, cp, q[:60], a[:60], len(ctx_list))
+        logger.warning("[RAGAS] scores F=%.3f AR=%.3f CP=%.3f | q=%r | ar_q=%r | a=%r | ctx=%d",
+                       ff, ar, cp, q[:60], q_ar[:60], a[:60], len(ctx_list))
 
         hallu_flags = _detect_hallu_flags(a, ctx_list)
         return OfficialRagasScores(

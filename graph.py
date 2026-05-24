@@ -15,7 +15,7 @@ from agents.critic import critic_agent, check_faithfulness, is_critically_low
 from agents.output import output_agent
 from core.llm_client import set_llm_provider, reset_llm_provider
 from infra.audit_logger import save_audit_log, save_loop_log
-from infra.evaluator import flesch_kincaid_grade_en
+from infra.evaluator import flesch_kincaid_grade_en, get_pure_fk_grade
 
 
 # ── 노드 이름 → step_callback 이름 매핑 ─────────────────────────────────────
@@ -58,6 +58,18 @@ def _critic_node(
     cp    = state.get("context_precision_score", 0.0)
 
     new_state = {**state, "log": list(state["log"]), "eval_count": eval_count}
+
+    # Best answer 추적: Tier 0 / 2 에서만 (F·CP가 의미 있는 경우)
+    if tier != 1:
+        current_q = 0.4 * f + 0.4 * ar + 0.2 * cp
+        if current_q > new_state.get("best_q_total", 0.0):
+            new_state["best_answer"] = new_state["answer"]
+            new_state["best_q_total"] = current_q
+            new_state["log"].append(
+                f"[Loop] 최고 답변 갱신: Q_total={current_q:.3f} "
+                f"(F={f:.2f}, AR={ar:.2f}, CP={cp:.2f})."
+            )
+
     goto: str = ""
 
     # ── 조건 E (Baseline): 평가 후 항상 즉시 output ──────────────────────────
@@ -184,8 +196,9 @@ def _critic_node(
 
 def _output_node(state: GraphState) -> GraphState:
     """한국어 번역 + 출처·면책 조항 추가 후 감사 로그 저장."""
-    # FK Grade: 번역 전 영어 원문으로 계산 (output_agent 호출 전)
-    fk = flesch_kincaid_grade_en(state.get("answer") or "")
+    # FK Grade: Consumer는 의학 용어 마스킹 후 순수 문장 구조로 계산
+    _fk_fn = get_pure_fk_grade if state.get("user_level") == "Consumer" else flesch_kincaid_grade_en
+    fk = _fk_fn(state.get("answer") or "")
     result = output_agent(state)
     elapsed = int((time.time() - result.get("workflow_start_time", time.time())) * 1000)
     save_audit_log(result, result.get("request_id", ""), is_fallback=False,
@@ -194,25 +207,38 @@ def _output_node(state: GraphState) -> GraphState:
 
 
 def _fallback_node(state: GraphState) -> GraphState:
-    """모든 Tier 소진 후 검색된 원문을 그대로 제시하고 감사 로그 저장."""
+    """모든 재시도 소진 후 최고 품질 답변을 사용하거나, 없으면 원문을 제시한다."""
     f = state.get("critic_score", 0.0)
-    state["log"].append(
-        f"[Final] 모든 Tier 소진 (최종 F={f:.2f}) — "
-        "신뢰할 수 있는 근거를 찾지 못했습니다."
-    )
-    raw_ctx = (
-        "\n\n---\n".join(state["context"]) if state["context"] else "(검색 결과 없음)"
-    )
-    state["answer"] = (
-        "신뢰할 수 있는 근거를 찾지 못했습니다. "
-        "아래는 검색된 원문 자료입니다. 직접 판단하시기 바랍니다.\n\n"
-        f"[참고 원문]\n{raw_ctx}"
-    )
+    best_answer = state.get("best_answer", "")
+    best_q = state.get("best_q_total", 0.0)
+
+    if best_answer and best_q > 0:
+        state["log"].append(
+            f"[Final] Fallback: 루프 내 최고 품질 답변 사용 "
+            f"(Q_total={best_q:.3f}, 최종 F={f:.2f})."
+        )
+        state["answer"] = best_answer
+        _fk_fn = get_pure_fk_grade if state.get("user_level") == "Consumer" else flesch_kincaid_grade_en
+        fk = _fk_fn(state["answer"])
+    else:
+        state["log"].append(
+            f"[Final] 모든 Tier 소진 (최종 F={f:.2f}) — "
+            "신뢰할 수 있는 근거를 찾지 못했습니다."
+        )
+        raw_ctx = (
+            "\n\n---\n".join(state["context"]) if state["context"] else "(검색 결과 없음)"
+        )
+        state["answer"] = (
+            "신뢰할 수 있는 근거를 찾지 못했습니다. "
+            "아래는 검색된 원문 자료입니다. 직접 판단하시기 바랍니다.\n\n"
+            f"[참고 원문]\n{raw_ctx}"
+        )
+        fk = None
+
     result = output_agent(state)
     elapsed = int((time.time() - result.get("workflow_start_time", time.time())) * 1000)
-    # fallback은 영어 원문 답변이 없으므로 fk_grade=None
     save_audit_log(result, result.get("request_id", ""), is_fallback=True,
-                   execution_time_ms=elapsed, fk_grade=None)
+                   execution_time_ms=elapsed, fk_grade=fk)
     return result
 
 
@@ -307,6 +333,9 @@ def run_medical_self_corrective_rag(
         "tier_path":              "0",
         "self_correction_count":  0,
         "eval_count":             0,
+        # ── Best Answer 추적 ──────────────────────────────────────────────────
+        "best_answer":            "",
+        "best_q_total":           0.0,
         # ── 시스템 ────────────────────────────────────────────────────────────
         "llm_provider":           prov,
         "workflow_start_time":    time.time(),
