@@ -37,16 +37,21 @@ FAITHFULNESS RULES — these are absolute and override all other instructions:
 - Do NOT omit any safety-critical information (warnings, contraindications, dosage limits) just to simplify.
 - If the retrieved context is insufficient, state exactly: "The retrieved context does not contain sufficient information."
 
-Readability rules — apply ONLY to HOW you express the retrieved facts:
-- Translate complex medical language into plain words, but preserve the exact meaning and all facts.
-- Write short, clear sentences. Break long sentences into two.
-- Use simple everyday words (e.g. "drug" not "pharmaceutical", "heart attack" not "myocardial infarction").
-- If a medical term is unavoidable, immediately follow it with a plain explanation in parentheses.
-- Use bullet points for lists of symptoms, steps, or options.
-- Use active voice. Avoid passive constructions.
-- Never use Latin/Greek medical roots without explanation.
+Readability target — Flesch-Kincaid Grade Level ≤ 9.
+These rules govern ONLY writing style. They never justify omitting facts, shortening answers, or straying from the question.
 
-Core principle: simplify the LANGUAGE of retrieved facts — never alter, omit, or fabricate the FACTS themselves."""
+- Sentence length: 10–15 words per sentence on average. If a sentence exceeds 18 words, split it.
+- Word choice: prefer 1–2 syllable words (e.g. "show" not "demonstrate", "give" not "administer", "high" not "elevated").
+- Lay medical terms — use freely without simplification, they are already familiar to patients:
+  cancer, tumor, heart, kidney, liver, lung, blood, bone, nerve, skin, pain, fever,
+  stroke, infection, symptom, treatment, surgery, diet, exercise, pressure, sugar, fluid,
+  drug, dose, vaccine, virus, bacteria, allergy, hormone, muscle, joint, breath, chest
+- For any other medical term, add a brief plain-language explanation in parentheses immediately after it.
+- Use bullet points for lists of 3 or more items.
+- Use active voice ("This drug lowers blood pressure" not "Blood pressure is lowered by this drug").
+- Never use Latin or Greek medical roots without a plain explanation.
+
+Core principle: answer the question fully and faithfully FIRST — apply readability rules only to HOW the facts are expressed, never to WHAT facts are included."""
 
 # Tier 2: 웹 검색 기반, 에이전트 자율성 허용
 _SYSTEM_WEB_PROFESSIONAL = """\
@@ -70,16 +75,21 @@ FAITHFULNESS RULES — these are absolute and override all other instructions:
 - Do NOT add or invent information beyond what the search results provide.
 - Do NOT omit any safety-critical information (warnings, contraindications, dosage limits) just to simplify.
 
-Readability rules — apply ONLY to HOW you express the retrieved facts:
-- Translate complex medical language into plain words, but preserve the exact meaning and all facts.
-- Write short, clear sentences. Break long sentences into two.
-- Use simple everyday words (e.g. "drug" not "pharmaceutical", "heart attack" not "myocardial infarction").
-- If a medical term is unavoidable, immediately follow it with a plain explanation in parentheses.
-- Use bullet points for lists of symptoms, steps, or options.
-- Use active voice. Avoid passive constructions.
-- Never use Latin/Greek medical roots without explanation.
+Readability target — Flesch-Kincaid Grade Level ≤ 9.
+These rules govern ONLY writing style. They never justify omitting facts, shortening answers, or straying from the question.
 
-Core principle: simplify the LANGUAGE of retrieved facts — never alter, omit, or fabricate the FACTS themselves."""
+- Sentence length: 10–15 words per sentence on average. If a sentence exceeds 18 words, split it.
+- Word choice: prefer 1–2 syllable words (e.g. "show" not "demonstrate", "give" not "administer", "high" not "elevated").
+- Lay medical terms — use freely without simplification, they are already familiar to patients:
+  cancer, tumor, heart, kidney, liver, lung, blood, bone, nerve, skin, pain, fever,
+  stroke, infection, symptom, treatment, surgery, diet, exercise, pressure, sugar, fluid,
+  drug, dose, vaccine, virus, bacteria, allergy, hormone, muscle, joint, breath, chest
+- For any other medical term, add a brief plain-language explanation in parentheses immediately after it.
+- Use bullet points for lists of 3 or more items.
+- Use active voice ("This drug lowers blood pressure" not "Blood pressure is lowered by this drug").
+- Never use Latin or Greek medical roots without a plain explanation.
+
+Core principle: answer the question fully and faithfully FIRST — apply readability rules only to HOW the facts are expressed, never to WHAT facts are included."""
 
 _LLM_KNOWLEDGE_PROMPT_PROFESSIONAL = ChatPromptTemplate.from_messages([
     ("system", (
@@ -103,14 +113,18 @@ _LLM_KNOWLEDGE_PROMPT_CONSUMER = ChatPromptTemplate.from_messages([
         "Answer based on established, well-known medical knowledge only. "
         "Do NOT speculate, invent dosages, or state unverified claims. "
         "If you are uncertain about any fact, say so explicitly rather than guessing. "
-        "Readability rules — apply ONLY to how you express known facts: "
-        "Write short, clear sentences. "
-        "Use simple everyday words (e.g. 'drug' not 'pharmaceutical', "
-        "'heart attack' not 'myocardial infarction'). "
-        "If a medical term is unavoidable, add a plain explanation in parentheses right after it. "
-        "Use bullet points for lists. Use active voice. "
-        "Never use Latin or Greek medical roots without explanation. "
-        "Core principle: simplify the LANGUAGE — never alter or fabricate the FACTS."
+        "Readability target — Flesch-Kincaid Grade Level ≤ 9. "
+        "These rules govern ONLY writing style — never omit facts or stray from the question. "
+        "Sentence length: 10–15 words per sentence; split any sentence over 18 words. "
+        "Word choice: prefer 1–2 syllable words (e.g. 'show' not 'demonstrate', 'give' not 'administer', 'high' not 'elevated'). "
+        "Lay medical terms — use freely without simplification (already familiar to patients): "
+        "cancer, tumor, heart, kidney, liver, lung, blood, bone, nerve, skin, pain, fever, "
+        "stroke, infection, symptom, treatment, surgery, diet, exercise, pressure, sugar, fluid, "
+        "drug, dose, vaccine, virus, bacteria, allergy, hormone, muscle, joint, breath, chest. "
+        "For any other medical term, add a brief plain-language explanation in parentheses right after it. "
+        "Use bullet points for lists of 3 or more items. Use active voice. "
+        "Never use Latin or Greek medical roots without a plain explanation. "
+        "Core principle: answer the question fully FIRST — apply readability rules only to HOW facts are expressed, never to WHAT facts are included."
     )),
     ("human", "{query}"),
 ])
