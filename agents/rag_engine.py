@@ -38,20 +38,17 @@ FAITHFULNESS RULES — these are absolute and override all other instructions:
 - If the retrieved context is insufficient, state exactly: "The retrieved context does not contain sufficient information."
 
 Readability target — Flesch-Kincaid Grade Level ≤ 9.
-These rules govern ONLY writing style. They never justify omitting facts, shortening answers, or straying from the question.
+These rules apply ONLY to sentence structure. They never justify omitting facts or straying from the question.
 
-- Sentence length: 10–15 words per sentence on average. If a sentence exceeds 18 words, split it.
-- Word choice: prefer 1–2 syllable words (e.g. "show" not "demonstrate", "give" not "administer", "high" not "elevated").
-- Lay medical terms — use freely without simplification, they are already familiar to patients:
-  cancer, tumor, heart, kidney, liver, lung, blood, bone, nerve, skin, pain, fever,
-  stroke, infection, symptom, treatment, surgery, diet, exercise, pressure, sugar, fluid,
-  drug, dose, vaccine, virus, bacteria, allergy, hormone, muscle, joint, breath, chest
-- For any other medical term, add a brief plain-language explanation in parentheses immediately after it.
+- Keep ALL medical terms exactly as they are (e.g. hypertension, atherosclerosis, erythroblast). Do NOT replace medical terms with lay equivalents.
+- Sentence length: 10–15 words per sentence on average. If a sentence exceeds 18 words, split it into two.
+- Simplify only the non-medical connecting words and structure:
+  prefer "shows" over "demonstrates", "leads to" over "results in the manifestation of", "because" over "due to the fact that".
+- Use active voice ("Hypertension damages blood vessels" not "Blood vessels are damaged by hypertension").
 - Use bullet points for lists of 3 or more items.
-- Use active voice ("This drug lowers blood pressure" not "Blood pressure is lowered by this drug").
-- Never use Latin or Greek medical roots without a plain explanation.
+- Use simple transition words: and, but, so, because, when, if, then.
 
-Core principle: answer the question fully and faithfully FIRST — apply readability rules only to HOW the facts are expressed, never to WHAT facts are included."""
+Core principle: answer the question fully and faithfully FIRST — simplify ONLY the sentence structure, never the medical content."""
 
 # Tier 2: 웹 검색 기반, 에이전트 자율성 허용
 _SYSTEM_WEB_PROFESSIONAL = """\
@@ -76,20 +73,17 @@ FAITHFULNESS RULES — these are absolute and override all other instructions:
 - Do NOT omit any safety-critical information (warnings, contraindications, dosage limits) just to simplify.
 
 Readability target — Flesch-Kincaid Grade Level ≤ 9.
-These rules govern ONLY writing style. They never justify omitting facts, shortening answers, or straying from the question.
+These rules apply ONLY to sentence structure. They never justify omitting facts or straying from the question.
 
-- Sentence length: 10–15 words per sentence on average. If a sentence exceeds 18 words, split it.
-- Word choice: prefer 1–2 syllable words (e.g. "show" not "demonstrate", "give" not "administer", "high" not "elevated").
-- Lay medical terms — use freely without simplification, they are already familiar to patients:
-  cancer, tumor, heart, kidney, liver, lung, blood, bone, nerve, skin, pain, fever,
-  stroke, infection, symptom, treatment, surgery, diet, exercise, pressure, sugar, fluid,
-  drug, dose, vaccine, virus, bacteria, allergy, hormone, muscle, joint, breath, chest
-- For any other medical term, add a brief plain-language explanation in parentheses immediately after it.
+- Keep ALL medical terms exactly as they are (e.g. hypertension, atherosclerosis, erythroblast). Do NOT replace medical terms with lay equivalents.
+- Sentence length: 10–15 words per sentence on average. If a sentence exceeds 18 words, split it into two.
+- Simplify only the non-medical connecting words and structure:
+  prefer "shows" over "demonstrates", "leads to" over "results in the manifestation of", "because" over "due to the fact that".
+- Use active voice ("Hypertension damages blood vessels" not "Blood vessels are damaged by hypertension").
 - Use bullet points for lists of 3 or more items.
-- Use active voice ("This drug lowers blood pressure" not "Blood pressure is lowered by this drug").
-- Never use Latin or Greek medical roots without a plain explanation.
+- Use simple transition words: and, but, so, because, when, if, then.
 
-Core principle: answer the question fully and faithfully FIRST — apply readability rules only to HOW the facts are expressed, never to WHAT facts are included."""
+Core principle: answer the question fully and faithfully FIRST — simplify ONLY the sentence structure, never the medical content."""
 
 _LLM_KNOWLEDGE_PROMPT_PROFESSIONAL = ChatPromptTemplate.from_messages([
     ("system", (
@@ -114,17 +108,15 @@ _LLM_KNOWLEDGE_PROMPT_CONSUMER = ChatPromptTemplate.from_messages([
         "Do NOT speculate, invent dosages, or state unverified claims. "
         "If you are uncertain about any fact, say so explicitly rather than guessing. "
         "Readability target — Flesch-Kincaid Grade Level ≤ 9. "
-        "These rules govern ONLY writing style — never omit facts or stray from the question. "
-        "Sentence length: 10–15 words per sentence; split any sentence over 18 words. "
-        "Word choice: prefer 1–2 syllable words (e.g. 'show' not 'demonstrate', 'give' not 'administer', 'high' not 'elevated'). "
-        "Lay medical terms — use freely without simplification (already familiar to patients): "
-        "cancer, tumor, heart, kidney, liver, lung, blood, bone, nerve, skin, pain, fever, "
-        "stroke, infection, symptom, treatment, surgery, diet, exercise, pressure, sugar, fluid, "
-        "drug, dose, vaccine, virus, bacteria, allergy, hormone, muscle, joint, breath, chest. "
-        "For any other medical term, add a brief plain-language explanation in parentheses right after it. "
-        "Use bullet points for lists of 3 or more items. Use active voice. "
-        "Never use Latin or Greek medical roots without a plain explanation. "
-        "Core principle: answer the question fully FIRST — apply readability rules only to HOW facts are expressed, never to WHAT facts are included."
+        "These rules apply ONLY to sentence structure — never omit facts or stray from the question. "
+        "Keep ALL medical terms exactly as they are (e.g. hypertension, atherosclerosis). Do NOT replace medical terms with lay equivalents. "
+        "Sentence length: 10–15 words per sentence; split any sentence over 18 words into two. "
+        "Simplify only the non-medical connecting words and structure: "
+        "prefer 'shows' over 'demonstrates', 'leads to' over 'results in the manifestation of', 'because' over 'due to the fact that'. "
+        "Use active voice ('Hypertension damages blood vessels' not 'Blood vessels are damaged by hypertension'). "
+        "Use bullet points for lists of 3 or more items. "
+        "Use simple transition words: and, but, so, because, when, if, then. "
+        "Core principle: answer the question fully FIRST — simplify ONLY the sentence structure, never the medical content."
     )),
     ("human", "{query}"),
 ])
