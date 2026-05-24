@@ -55,7 +55,8 @@ def flesch_kincaid_grade_en(text: str) -> float:
 # 패턴 1: 그리스/라틴 의학 접미사 (-itis, -ology, -osis, -oma 등)
 _PURE_FK_SUFFIX = re.compile(
     r"\b\w+(?:itis|ology|ectomy|plasty|oscopy|otomy|ostomy|algia|pathy"
-    r"|emia|uria|graphy|trophy|genesis|lysis|osis|oma)\b",
+    r"|emia|uria|graphy|trophy|genesis|lysis|osis|oma"
+    r"|pnea|plasia|ectasis|rrhea)\b",
     re.IGNORECASE,
 )
 # 패턴 2: 소유격 병명 (Alzheimer's disease, Parkinson's syndrome 등)
@@ -67,31 +68,44 @@ _PURE_FK_EXPLICIT = frozenset({
     # Cardiovascular
     "hypertension", "coronary",    "myocardial",  "infarction",
     "arrhythmia",   "cholesterol", "angiotensin", "ischemic",
-    "vascular",     "diastolic",   "cerebral",
+    "vascular",     "diastolic",   "cerebral",    "angina",
     # Respiratory
     "pulmonary",    "obstructive", "respiratory", "pneumonia",
-    "bronchospasm", "emphysema",   "influenza",
+    "bronchospasm", "emphysema",   "influenza",   "pleurisy",
+    "pleuritic",    "sputum",      "exudate",     "atypical",
+    # GI / Digestive
+    "esophagus",    "stricture",   "pyloric",     "duodenal",
+    "peptic",       "gastric",     "duodenum",    "mucosal",
+    "mucosa",       "reflux",
     # Metabolic / Endocrine
     "diabetes",     "mellitus",    "metabolic",   "endocrine",
     "deficiency",   "potassium",   "estrogen",    "progesterone",
-    "creatinine",   "metformin",
+    "creatinine",   "metformin",   "thyroid",     "glycemic",
     # Oncology
     "carcinoma",    "colorectal",  "chemotherapy","tamoxifen",
     "metastatic",   "lymphoma",    "sarcoma",     "melanoma",
+    "rectal",       "sigmoid",     "polyp",       "biopsy",
     # Neurology / Psychiatry
     "dementia",     "alzheimer",   "depression",  "depressive",
     "neurologic",   "cognitive",   "serotonin",   "dopamine",
+    "confusion",
+    # Musculoskeletal
+    "synovial",     "cartilage",
     # Immunology / Inflammation
     "inflammatory", "inflammation","bacterial",   "antibiotics",
-    "antibiotic",   "neutrophil",  "hormonal",
+    "antibiotic",   "neutrophil",  "hormonal",    "antiviral",
+    # Infectious disease / COVID
+    "variant",      "quarantine",
+    # General clinical symptoms
+    "malaise",      "vomiting",
     # General medical
     "receptor",     "receptors",   "inhibitor",   "diagnostic",
     "impairment",   "mortality",   "hemorrhage",  "abdominal",
     # 6-9자 고빈도 의학 용어 (3음절 이상, 패턴 1·3 미탐지)
-    "nausea",       "mucosa",      "oxygen",
+    "nausea",       "oxygen",
     "therapy",      "surgery",     "cardiac",     "calcium",
     "insulin",      "vitamin",     "hepatic",     "urinary",
-    "aspirin",      "mucosal",     "medicine",    "bacteria",
+    "aspirin",      "medicine",    "bacteria",
     "molecule",     "antibody",    "nutrient",    "cellular",
     "clinical",     "physical",    "surgical",
     "infection",    "condition",   "procedure",   "physician",
