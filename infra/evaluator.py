@@ -130,6 +130,14 @@ _PURE_FK_EXPLICIT = frozenset({
     # Immune / infection (폐렴·불안 답변)
     "triggers",     "mediates",    "activates",   "cascade",
     "pathogens",    "pathogen",    "microbes",
+    # Anxiety disorder (불안장애 Consumer 답변 — FK 개선)
+    "anxiety",      "excessive",   "somatic",     "disorder",
+    "emotions",     "sadness",
+    # Iron-deficiency anemia (빈혈 Consumer 답변 — FK 개선)
+    "capacity",     "abnormal",    "produces",    "pallor",
+    # Community-acquired pneumonia (폐렴 Consumer 답변 — FK 개선)
+    "community",    "acquired",    "effusion",    "severity",
+    "productive",
 })
 _PURE_FK_EXPLICIT_PAT = re.compile(
     r"\b(?:" + "|".join(sorted(_PURE_FK_EXPLICIT, key=len, reverse=True)) + r")\b",
