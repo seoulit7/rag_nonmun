@@ -40,8 +40,11 @@ FAITHFULNESS RULES — these are absolute and override all other instructions:
 Readability target — Flesch-Kincaid Grade Level ≤ 9.
 These rules apply ONLY to sentence structure. They never justify omitting facts or straying from the question.
 
+- Begin with ONE direct summary sentence (≤ 18 words) that contains all key medical terms from the question.
+  Example: "Chronic kidney disease causes anemia because the kidneys produce insufficient erythropoietin."
+  This sentence anchors the answer to the question — do NOT omit it.
 - Keep ALL medical terms exactly as they are (e.g. hypertension, atherosclerosis, erythroblast). Do NOT replace medical terms with lay equivalents.
-- Sentence length: 10–15 words per sentence on average. If a sentence exceeds 18 words, split it into two.
+- After the summary sentence, explain each point in separate short sentences (10–15 words each). If a sentence exceeds 18 words, split it into two.
 - Simplify only the non-medical connecting words and structure:
   prefer "shows" over "demonstrates", "leads to" over "results in the manifestation of", "because" over "due to the fact that".
 - Use active voice ("Hypertension damages blood vessels" not "Blood vessels are damaged by hypertension").
@@ -75,8 +78,11 @@ FAITHFULNESS RULES — these are absolute and override all other instructions:
 Readability target — Flesch-Kincaid Grade Level ≤ 9.
 These rules apply ONLY to sentence structure. They never justify omitting facts or straying from the question.
 
+- Begin with ONE direct summary sentence (≤ 18 words) that contains all key medical terms from the question.
+  Example: "Chronic kidney disease causes anemia because the kidneys produce insufficient erythropoietin."
+  This sentence anchors the answer to the question — do NOT omit it.
 - Keep ALL medical terms exactly as they are (e.g. hypertension, atherosclerosis, erythroblast). Do NOT replace medical terms with lay equivalents.
-- Sentence length: 10–15 words per sentence on average. If a sentence exceeds 18 words, split it into two.
+- After the summary sentence, explain each point in separate short sentences (10–15 words each). If a sentence exceeds 18 words, split it into two.
 - Simplify only the non-medical connecting words and structure:
   prefer "shows" over "demonstrates", "leads to" over "results in the manifestation of", "because" over "due to the fact that".
 - Use active voice ("Hypertension damages blood vessels" not "Blood vessels are damaged by hypertension").
@@ -109,8 +115,11 @@ _LLM_KNOWLEDGE_PROMPT_CONSUMER = ChatPromptTemplate.from_messages([
         "If you are uncertain about any fact, say so explicitly rather than guessing. "
         "Readability target — Flesch-Kincaid Grade Level ≤ 9. "
         "These rules apply ONLY to sentence structure — never omit facts or stray from the question. "
+        "Begin with ONE direct summary sentence (≤ 18 words) that contains all key medical terms from the question. "
+        "Example: 'Chronic kidney disease causes anemia because the kidneys produce insufficient erythropoietin.' "
+        "This sentence anchors the answer to the question — do NOT omit it. "
         "Keep ALL medical terms exactly as they are (e.g. hypertension, atherosclerosis). Do NOT replace medical terms with lay equivalents. "
-        "Sentence length: 10–15 words per sentence; split any sentence over 18 words into two. "
+        "After the summary sentence, explain each point in separate short sentences (10–15 words each); split any sentence over 18 words into two. "
         "Simplify only the non-medical connecting words and structure: "
         "prefer 'shows' over 'demonstrates', 'leads to' over 'results in the manifestation of', 'because' over 'due to the fact that'. "
         "Use active voice ('Hypertension damages blood vessels' not 'Blood vessels are damaged by hypertension'). "
