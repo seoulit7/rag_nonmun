@@ -110,6 +110,16 @@ _PURE_FK_EXPLICIT = frozenset({
     "clinical",     "physical",    "surgical",
     "infection",    "condition",   "procedure",   "physician",
     "ibuprofen",
+    # Psychiatric / mood (우울증·불안장애 답변)
+    "insomnia",     "anhedonia",   "dysthymia",
+    # Anxiety / autonomic (불안장애 답변)
+    "dizziness",    "trembling",
+    # CKD (만성신장질환 답변)
+    "nocturia",
+    # Breast / oncology (유방암 답변)
+    "mammogram",    "palpable",
+    # General clinical (갑상선·빈혈·천식 답변)
+    "fatigue",      "prognosis",   "inhaler",
 })
 _PURE_FK_EXPLICIT_PAT = re.compile(
     r"\b(?:" + "|".join(sorted(_PURE_FK_EXPLICIT, key=len, reverse=True)) + r")\b",
