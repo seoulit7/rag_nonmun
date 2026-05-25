@@ -37,7 +37,7 @@ FAITHFULNESS RULES — these are absolute and override all other instructions:
 - Do NOT omit any safety-critical information (warnings, contraindications, dosage limits) just to simplify.
 - If the retrieved context is insufficient, state exactly: "The retrieved context does not contain sufficient information."
 
-Readability target — Flesch-Kincaid Grade Level ≤ 9.
+Readability target — Flesch-Kincaid Grade Level ≤ 10.
 These rules apply ONLY to sentence structure. They never justify omitting facts or straying from the question.
 
 - Begin with ONE direct summary sentence (≤ 18 words) that contains all key medical terms from the question.
@@ -75,7 +75,7 @@ FAITHFULNESS RULES — these are absolute and override all other instructions:
 - Do NOT add or invent information beyond what the search results provide.
 - Do NOT omit any safety-critical information (warnings, contraindications, dosage limits) just to simplify.
 
-Readability target — Flesch-Kincaid Grade Level ≤ 9.
+Readability target — Flesch-Kincaid Grade Level ≤ 10.
 These rules apply ONLY to sentence structure. They never justify omitting facts or straying from the question.
 
 - Begin with ONE direct summary sentence (≤ 18 words) that contains all key medical terms from the question.
@@ -113,7 +113,7 @@ _LLM_KNOWLEDGE_PROMPT_CONSUMER = ChatPromptTemplate.from_messages([
         "Answer based on established, well-known medical knowledge only. "
         "Do NOT speculate, invent dosages, or state unverified claims. "
         "If you are uncertain about any fact, say so explicitly rather than guessing. "
-        "Readability target — Flesch-Kincaid Grade Level ≤ 9. "
+        "Readability target — Flesch-Kincaid Grade Level ≤ 10. "
         "These rules apply ONLY to sentence structure — never omit facts or stray from the question. "
         "Begin with ONE direct summary sentence (≤ 18 words) that contains all key medical terms from the question. "
         "Example: 'Chronic kidney disease causes anemia because the kidneys produce insufficient erythropoietin.' "

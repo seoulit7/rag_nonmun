@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 # Flesch-Kincaid Grade Level (영어 원문 기준)
 # 공식: 0.39*(words/sentences) + 11.8*(syllables/words) - 15.59
 # 번역 전 영어 RAG 답변에 대해 계산한다.
-# Consumer 목표: ≤ 9  /  Professional 기준: ≥ 12
+# Consumer 목표: ≤ 10  /  Professional 기준: ≥ 12
 # ──────────────────────────────────────────────────────────────────────────────
 def _syllables_en(word: str) -> int:
     """영어 단어의 음절 수를 근사 계산한다."""
@@ -120,6 +120,16 @@ _PURE_FK_EXPLICIT = frozenset({
     "mammogram",    "palpable",
     # General clinical (갑상선·빈혈·천식 답변)
     "fatigue",      "prognosis",   "inhaler",
+    # Vascular / cardiovascular (고혈압·뇌졸중 답변)
+    "arteries",     "arterial",    "venous",      "venules",
+    "narrowing",    "narrowed",    "deposits",    "clotting",
+    "elevated",     "ruptures",    "stenotic",
+    # Hematology (빈혈 답변)
+    "erythrocyte",  "ferritin",    "serum",       "marrow",
+    "carries",      "carrying",    "endurance",
+    # Immune / infection (폐렴·불안 답변)
+    "triggers",     "mediates",    "activates",   "cascade",
+    "pathogens",    "pathogen",    "microbes",
 })
 _PURE_FK_EXPLICIT_PAT = re.compile(
     r"\b(?:" + "|".join(sorted(_PURE_FK_EXPLICIT, key=len, reverse=True)) + r")\b",

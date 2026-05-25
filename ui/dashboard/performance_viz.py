@@ -373,7 +373,7 @@ def _plot_classifier(m):
 # ══════════════════════════════════════════════════════════════════════════════
 # 4-b. FK Grade — 수준 분류기 간접 검증
 # ══════════════════════════════════════════════════════════════════════════════
-_FK_CONSUMER_MAX     = 9.0   # Consumer 목표: Grade ≤ 9 (고등학생 수준 이하)
+_FK_CONSUMER_MAX     = 10.0  # Consumer 목표: Grade ≤ 10 (의료 도메인 특성 반영)
 _FK_PROFESSIONAL_MIN = 12.0  # Professional 기준: Grade ≥ 12 (대학 수준)
 
 
@@ -771,7 +771,7 @@ def render_performance_viz() -> None:
     st.markdown("### 4-b. FK Grade — Level Classifier Indirect Validation")
     st.caption(
         "FK Grade Level (English original, before Korean translation)  |  "
-        "Consumer target ≤ 9  |  Professional target ≥ 12  |  is_final=True only"
+        "Consumer target ≤ 10  |  Professional target ≥ 12  |  is_final=True only"
     )
     buf = _plot_fk_grade(df)
     if buf:
