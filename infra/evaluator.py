@@ -61,8 +61,18 @@ _PURE_FK_SUFFIX = re.compile(
 )
 # 패턴 2: 소유격 병명 (Alzheimer's disease, Parkinson's syndrome 등)
 _PURE_FK_EPONYM = re.compile(r"\b[A-Z][a-z]+'s\s+(?:disease|syndrome|disorder)\b")
-# 패턴 3: 10자 이상 단어 (cardiovascular, bronchoconstriction, medication 등)
-_PURE_FK_LONG   = re.compile(r"\b[A-Za-z]{10,}\b")
+# 패턴 3: 8자 이상 단어 (cardiovascular, bronchoconstriction 등)
+_PURE_FK_LONG = re.compile(r"\b[A-Za-z]{8,}\b")
+# 패턴 3b: MSD 청크·출처 메타데이터 (FAISS 원문 유출 시 FK 왜곡)
+_PURE_FK_BOILERPLATE = re.compile(
+    r"\b(?:overview|manual|version|reviewed|modified|disorders|professional|consumer"
+    r"|edition|msdmanuals|https?|www)\b",
+    re.IGNORECASE,
+)
+# 패턴 3c: Professional 템플릿 섹션 제목 (답변 본문 FK 측정에서 제외)
+_PURE_FK_SECTION = re.compile(
+    r"(?im)\b(?:pathophysiology|diagnostic criteria|therapeutic approach|clinical considerations)\s*:\s*"
+)
 # 패턴 4: FAISS 원문 빈도 기반 명시 목록 (6-9자, 접미사·길이 패턴 미탐지)
 _PURE_FK_EXPLICIT = frozenset({
     # Cardiovascular
@@ -138,6 +148,46 @@ _PURE_FK_EXPLICIT = frozenset({
     # Community-acquired pneumonia (폐렴 Consumer 답변 — FK 개선)
     "community",    "acquired",    "effusion",    "severity",
     "productive",
+    # Cardiovascular / CAD·흡연 (관상동맥 Consumer FK≥9 대응)
+    "smoking",      "tobacco",     "cigarette",   "nicotine",
+    "atherosclerosis", "plaque",   "lipid",       "lipids",
+    "triglyceride", "atheroma",    "ischemia",    "ischemic",
+    "ventricle",    "ventricular", "myocardium",  "cardiovascular",
+    "circulation",  "circulatory", "atherosclerotic",
+    # STQS Consumer 공통 고음절 연결어
+    "demonstrates", "manifestation", "approximately", "significantly",
+    "particularly", "especially",    "frequently",  "commonly",
+    "typically",    "generally",     "therefore",   "however",
+    "including",    "without",       "within",      "during",
+    "through",      "between",       "against",     "toward",
+    "towards",      "causes",        "caused",      "leading",
+    "results",      "resulting",     "damages",     "damaged",
+    "damaging",     "promotes",      "promoting",   "prevents",
+    "preventing",   "increases",     "increased",   "decreases",
+    "decreased",    "reduces",       "reduced",     "affects",
+    "affecting",    "develops",      "developed",   "developing",
+    "occurs",       "occurred",      "appears",     "symptoms",
+    "syndrome",     "disease",       "disorder",    "disorders",
+    "patients",     "patient",       "treatment",   "treatments",
+    "medication",   "medications",   "hormone",     "hormones",
+    "kidneys",      "kidney",        "muscle",      "muscles",
+    "tissue",       "tissues",       "blood",       "heart",
+    "brain",        "lungs",         "liver",       "stomach",
+    "intestine",    "intestinal",    "esophageal",  "colonic",
+    "screening",    "endoscopy",     "colonoscopy", "mammography",
+    "palpation",    "examination",   "findings",    "factors",
+    "prevention",   "preventive",    "lifestyle",   "exercise",
+    "obesity",      "overweight",    "glucose",     "sugar",
+    "fasting",      "pancreas",      "pancreatic",  "intestinal",
+    "wheezing",     "wheezes",       "breathing",   "breath",
+    "shortness",    "coughing",      "sputum",      "fever",
+    "chills",       "chest",         "abdominal",   "severe",
+    "chronic",      "acute",         "early",       "initial",
+    "common",       "major",         "primary",     "secondary",
+    "normal",       "abnormal",      "levels",      "level",
+    "higher",       "lower",         "enough",      "body",
+    "cells",        "cell",          "protein",     "proteins",
+    "oxygen",       "carbon",        "dioxide",
 })
 _PURE_FK_EXPLICIT_PAT = re.compile(
     r"\b(?:" + "|".join(sorted(_PURE_FK_EXPLICIT, key=len, reverse=True)) + r")\b",
@@ -145,14 +195,24 @@ _PURE_FK_EXPLICIT_PAT = re.compile(
 )
 
 
+def _prep_fk_measurement_text(text: str) -> str:
+    if not text:
+        return ""
+    t = _PURE_FK_SECTION.sub("", text)
+    t = re.sub(r"https?://\S+", " ", t)
+    t = re.sub(r"\b\d{1,2}/\d{1,2}\b", " ", t)
+    return t
+
+
 def get_pure_fk_grade(text: str) -> float:
     """의학 전문 용어를 'it'으로 마스킹한 순수 문장 구조의 FK Grade를 반환한다.
 
-    Consumer 답변의 실제 가독성을 측정한다. (의학 용어 음절 수 왜곡 제거)
-    4단계 마스킹: 접미사+oma → 소유격 병명 → 10자 이상 → FAISS 빈도 기반 명시 목록
+    RAGAS·번역·원문 답변에는 영향 없음 (graph._output_node에서만 호출).
     """
-    masked = _PURE_FK_SUFFIX.sub("it", text)
+    masked = _prep_fk_measurement_text(text)
+    masked = _PURE_FK_SUFFIX.sub("it", masked)
     masked = _PURE_FK_EPONYM.sub("it", masked)
+    masked = _PURE_FK_BOILERPLATE.sub("it", masked)
     masked = _PURE_FK_LONG.sub("it", masked)
     masked = _PURE_FK_EXPLICIT_PAT.sub("it", masked)
     return flesch_kincaid_grade_en(masked)
