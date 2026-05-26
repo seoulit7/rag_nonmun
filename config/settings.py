@@ -140,9 +140,9 @@ GEMINI_OPENAI_COMPAT_BASE_URL = _env(
 GEMINI_MODEL = _env("GEMINI_MODEL", "gemini-2.5-pro")
 _gemini_aux = _env("MEDICAL_RAG_GEMINI_AUX_MODEL", "")
 GEMINI_AUX_MODEL = _gemini_aux if _gemini_aux else "gemini-2.5-flash"
-OPENAI_MODEL = _env("OPENAI_MODEL", "gpt-4.1")
+OPENAI_MODEL = _env("OPENAI_MODEL", "gpt-4o")
 TRANSLATE_MODEL = _env("MEDICAL_RAG_TRANSLATE_MODEL", "gpt-4o-mini")
-RAGAS_LLM_MODEL = _env("MEDICAL_RAG_RAGAS_LLM_MODEL", "gpt-4o")
+RAGAS_LLM_MODEL = _env("MEDICAL_RAG_RAGAS_LLM_MODEL", "gpt-4o-mini")
 CLASSIFIER_LLM_MODEL = _env("MEDICAL_RAG_CLASSIFIER_MODEL", "gpt-4o")
 
 # Self-Correction Loop 제어
