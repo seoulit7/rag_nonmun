@@ -294,10 +294,10 @@ def run_medical_self_corrective_rag(
         step_callback:      노드 실행마다 호출되는 스트리밍 콜백.
         llm_provider:       "openai" 또는 "gemini"
         ablation_condition: Ablation Study 조건 ("A"~"E"). ""=일반 운영(조건 A와 동일).
-        expected_tier:      STQS-40 예상 티어 (0/1/2). -1=일반 운영.
-        query_index:        STQS-40 질문 번호 (1-40). 0=일반 운영.
-        disease:            질환명 (STQS-40 메타데이터).
-        query_level_label:  STQS-40 정답 레이블 ("P"/"C"). ""=일반 운영.
+        expected_tier:      STQS 예상 티어 (0/1/2). -1=일반 운영.
+        query_index:        STQS 질문 순번 (1부터). 0=일반 운영.
+        disease:            질환명 (STQS 메타데이터).
+        query_level_label:  STQS 정답 레이블 ("P"/"C"). ""=일반 운영.
     """
     initialize_vector_db()
 

@@ -1,0 +1,14 @@
+import sys; sys.stdout.reconfigure(encoding='utf-8')
+from dotenv import load_dotenv; load_dotenv('.env')
+import config.settings as s
+
+print("=== 현재 모델 설정 (OpenAI) ===")
+print(f"  RAG Engine  (주 답변 생성): {s.OPENAI_MODEL}")
+print(f"  Classifier  (수준 분류):    {s.CLASSIFIER_LLM_MODEL}")
+print(f"  Rewriter    (쿼리 재작성):  {s.TRANSLATE_MODEL}  <- TRANSLATE_MODEL 공유")
+print(f"  Translator  (한국어 번역):  {s.TRANSLATE_MODEL}")
+print(f"  RAGAS 평가  (F/AR/CP):      {s.RAGAS_LLM_MODEL}")
+print()
+print("=== 현재 모델 설정 (Gemini) ===")
+print(f"  Gemini 메인 (RAG Engine):   {s.GEMINI_MODEL}")
+print(f"  Gemini 보조 (분류/재작성/번역/RAGAS): {s.GEMINI_AUX_MODEL}")

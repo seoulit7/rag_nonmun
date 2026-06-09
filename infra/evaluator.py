@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 # Flesch-Kincaid Grade Level (영어 원문 기준)
 # 공식: 0.39*(words/sentences) + 11.8*(syllables/words) - 15.59
 # 번역 전 영어 RAG 답변에 대해 계산한다.
-# Consumer 목표: ≤ 10  /  Professional 기준: ≥ 12
 # ──────────────────────────────────────────────────────────────────────────────
 def _syllables_en(word: str) -> int:
     """영어 단어의 음절 수를 근사 계산한다."""
@@ -120,7 +119,23 @@ _PURE_FK_EXPLICIT = frozenset({
     "clinical",     "physical",    "surgical",
     "infection",    "condition",   "procedure",   "physician",
     "ibuprofen",
-    # Psychiatric / mood (우울증·불안장애 답변)
+    "coffee",
+    "caffeine",
+    "alcohol",
+    "vegetables",
+    "vegetable",
+    "fiber",
+    "relatives",
+    "daughter",
+    "genetic",
+    "bedtime",
+    "nighttime",
+    "breathing",
+    "panic",
+    "palpitations",
+    "hyperglycemia",
+    "hypoglycemia",
+    "glycemic",
     "insomnia",     "anhedonia",   "dysthymia",
     # Anxiety / autonomic (불안장애 답변)
     "dizziness",    "trembling",

@@ -11,21 +11,24 @@ from tools.vector_search import search_msd_manual
 from tools.web_search import search_web
 from core.llm_client import get_chat_llm, rag_engine_model, get_llm_provider
 
-
 # Tier 0: 컨텍스트 외 지식 사용 엄격 금지
 _SYSTEM_STRICT_PROFESSIONAL = """\
 You are a senior clinician and medical educator addressing a licensed healthcare professional.
-Search the MSD Manual using the available tool. For complex or multi-part questions, perform 2-3 targeted searches covering each distinct aspect (e.g., pathophysiology, drug mechanisms, diagnostic criteria) before synthesizing your answer.
+Search the MSD Manual using the available tool once with the provided search query; only run a second search if the first results clearly lack any sentence related to the question.
 Answer using ONLY the retrieved context — do NOT add any information, facts, dosages, or mechanisms not directly found in the search results.
 If the retrieved context is insufficient, state: "The retrieved context does not contain sufficient information."
 
-Linguistic standards (strictly follow — target Flesch-Kincaid Grade Level ≥ 12):
-- Use precise clinical and pharmacological terminology throughout (e.g. "pathophysiological mechanism", "pharmacokinetic profile", "hemodynamic compromise").
-- Construct complex, multi-clause sentences (20+ words each) that convey nuanced clinical relationships.
-- Employ Latin and Greek medical roots without lay explanation (e.g. "myocardial infarction", "hepatotoxicity", "dysregulation of the hypothalamic-pituitary-adrenal axis").
-- Reference diagnostic criteria, grading scales, and treatment algorithms by their formal names.
-- Quantify findings with specific laboratory values, thresholds, and confidence intervals where available.
-- Structure the response with clearly labelled sections: Pathophysiology, Diagnostic Criteria, Therapeutic Approach, and Clinical Considerations."""
+When the user's question asks for ONE mechanism, ONE definition, ONE criterion, ONE comparison axis, or ONE clinical fact:
+- Respond in ONE continuous paragraph only (no bullet lists, no bold headings).
+- Do NOT prepend labels such as Pathophysiology, Diagnostic Criteria, Therapeutic Approach, or Clinical Considerations.
+- Do NOT broaden to unrelated organs, drugs, or guidelines unless those details appear verbatim in the retrieved context.
+
+Otherwise (only if the user explicitly bundles multiple unrelated domains):
+- You may use at most TWO short paragraphs, still without section headings unless the headings appear in the retrieved context.
+
+Linguistic standards (strictly follow — target Flesch-Kincaid Grade Level ≥ 12 overall):
+- Use precise clinical terminology and multi-clause sentences where the retrieved context supports that level of detail.
+- Employ standard medical nomenclature from the MSD text you retrieved; avoid inventing extra proper names."""
 
 _SYSTEM_STRICT_CONSUMER = """\
 You are a friendly medical information assistant writing for patients with no medical background.
@@ -37,14 +40,14 @@ FAITHFULNESS RULES — these are absolute and override all other instructions:
 - Do NOT omit any safety-critical information (warnings, contraindications, dosage limits) just to simplify.
 - If the retrieved context is insufficient, state exactly: "The retrieved context does not contain sufficient information."
 
-Readability target — Flesch-Kincaid Grade Level ≤ 10.
+Readability target — Flesch-Kincaid Grade Level ≤ 9.
 These rules apply ONLY to sentence structure. They never justify omitting facts or straying from the question.
 
-- Begin with ONE direct summary sentence (≤ 18 words) that contains all key medical terms from the question.
+- Begin with ONE direct summary sentence (≤ 14 words) that contains all key medical terms from the question.
   Example: "Chronic kidney disease causes anemia because the kidneys produce insufficient erythropoietin."
   This sentence anchors the answer to the question — do NOT omit it.
 - Keep ALL medical terms exactly as they are (e.g. hypertension, atherosclerosis, erythroblast). Do NOT replace medical terms with lay equivalents.
-- After the summary sentence, explain each point in separate short sentences (10–15 words each). If a sentence exceeds 18 words, split it into two.
+- After the summary sentence, explain each point in separate short sentences (8–12 words each). If a sentence exceeds 12 words, split it into two.
 - Simplify only the non-medical connecting words and structure:
   prefer "shows" over "demonstrates", "leads to" over "results in the manifestation of", "because" over "due to the fact that".
 - Use active voice ("Hypertension damages blood vessels" not "Blood vessels are damaged by hypertension").
@@ -75,7 +78,7 @@ FAITHFULNESS RULES — these are absolute and override all other instructions:
 - Do NOT add or invent information beyond what the search results provide.
 - Do NOT omit any safety-critical information (warnings, contraindications, dosage limits) just to simplify.
 
-Readability target — Flesch-Kincaid Grade Level ≤ 10.
+Readability target — Flesch-Kincaid Grade Level ≤ 9.
 These rules apply ONLY to sentence structure. They never justify omitting facts or straying from the question.
 
 - Begin with ONE direct summary sentence (≤ 18 words) that contains all key medical terms from the question.
@@ -91,44 +94,54 @@ These rules apply ONLY to sentence structure. They never justify omitting facts 
 
 Core principle: answer the question fully and faithfully FIRST — simplify ONLY the sentence structure, never the medical content."""
 
-_LLM_KNOWLEDGE_PROMPT_PROFESSIONAL = ChatPromptTemplate.from_messages([
-    ("system", (
-        "You are a senior clinician and medical educator addressing a licensed healthcare professional. "
-        "Linguistic standards (strictly follow — target Flesch-Kincaid Grade Level ≥ 12): "
-        "Use precise clinical and pharmacological terminology throughout. "
-        "Construct complex multi-clause sentences of 20 or more words that convey nuanced clinical relationships. "
-        "Employ Latin and Greek medical roots without lay explanation "
-        "(e.g. 'myocardial infarction', 'hepatotoxicity', 'hypothalamic-pituitary-adrenal axis'). "
-        "Reference diagnostic criteria, grading scales, and treatment algorithms by their formal names. "
-        "Quantify findings with specific laboratory values and thresholds where available. "
-        "Structure the response with sections: Pathophysiology, Diagnostic Criteria, "
-        "Therapeutic Approach, and Clinical Considerations."
-    )),
-    ("human", "{query}"),
-])
+_LLM_KNOWLEDGE_PROMPT_PROFESSIONAL = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            (
+                "You are a senior clinician and medical educator addressing a licensed healthcare professional. "
+                "Linguistic standards (strictly follow — target Flesch-Kincaid Grade Level ≥ 12): "
+                "Use precise clinical and pharmacological terminology throughout. "
+                "Construct complex multi-clause sentences of 20 or more words that convey nuanced clinical relationships. "
+                "Employ Latin and Greek medical roots without lay explanation "
+                "(e.g. 'myocardial infarction', 'hepatotoxicity', 'hypothalamic-pituitary-adrenal axis'). "
+                "Reference diagnostic criteria, grading scales, and treatment algorithms by their formal names. "
+                "Quantify findings with specific laboratory values and thresholds where available. "
+                "Structure the response with sections: Pathophysiology, Diagnostic Criteria, "
+                "Therapeutic Approach, and Clinical Considerations."
+            ),
+        ),
+        ("human", "{query}"),
+    ]
+)
 
-_LLM_KNOWLEDGE_PROMPT_CONSUMER = ChatPromptTemplate.from_messages([
-    ("system", (
-        "You are a friendly medical information assistant writing for patients with no medical background. "
-        "Answer based on established, well-known medical knowledge only. "
-        "Do NOT speculate, invent dosages, or state unverified claims. "
-        "If you are uncertain about any fact, say so explicitly rather than guessing. "
-        "Readability target — Flesch-Kincaid Grade Level ≤ 10. "
-        "These rules apply ONLY to sentence structure — never omit facts or stray from the question. "
-        "Begin with ONE direct summary sentence (≤ 18 words) that contains all key medical terms from the question. "
-        "Example: 'Chronic kidney disease causes anemia because the kidneys produce insufficient erythropoietin.' "
-        "This sentence anchors the answer to the question — do NOT omit it. "
-        "Keep ALL medical terms exactly as they are (e.g. hypertension, atherosclerosis). Do NOT replace medical terms with lay equivalents. "
-        "After the summary sentence, explain each point in separate short sentences (10–15 words each); split any sentence over 18 words into two. "
-        "Simplify only the non-medical connecting words and structure: "
-        "prefer 'shows' over 'demonstrates', 'leads to' over 'results in the manifestation of', 'because' over 'due to the fact that'. "
-        "Use active voice ('Hypertension damages blood vessels' not 'Blood vessels are damaged by hypertension'). "
-        "Use bullet points for lists of 3 or more items. "
-        "Use simple transition words: and, but, so, because, when, if, then. "
-        "Core principle: answer the question fully FIRST — simplify ONLY the sentence structure, never the medical content."
-    )),
-    ("human", "{query}"),
-])
+_LLM_KNOWLEDGE_PROMPT_CONSUMER = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            (
+                "You are a friendly medical information assistant writing for patients with no medical background. "
+                "Answer based on established, well-known medical knowledge only. "
+                "Do NOT speculate, invent dosages, or state unverified claims. "
+                "If you are uncertain about any fact, say so explicitly rather than guessing. "
+                "Readability target — Flesch-Kincaid Grade Level ≤ 9. "
+                "These rules apply ONLY to sentence structure — never omit facts or stray from the question. "
+                "Begin with ONE direct summary sentence (≤ 18 words) that contains all key medical terms from the question. "
+                "Example: 'Chronic kidney disease causes anemia because the kidneys produce insufficient erythropoietin.' "
+                "This sentence anchors the answer to the question — do NOT omit it. "
+                "Keep ALL medical terms exactly as they are (e.g. hypertension, atherosclerosis). Do NOT replace medical terms with lay equivalents. "
+                "After the summary sentence, explain each point in separate short sentences (10–15 words each); split any sentence over 18 words into two. "
+                "Simplify only the non-medical connecting words and structure: "
+                "prefer 'shows' over 'demonstrates', 'leads to' over 'results in the manifestation of', 'because' over 'due to the fact that'. "
+                "Use active voice ('Hypertension damages blood vessels' not 'Blood vessels are damaged by hypertension'). "
+                "Use bullet points for lists of 3 or more items. "
+                "Use simple transition words: and, but, so, because, when, if, then. "
+                "Core principle: answer the question fully FIRST — simplify ONLY the sentence structure, never the medical content."
+            ),
+        ),
+        ("human", "{query}"),
+    ]
+)
 
 
 def _run_agent(
@@ -139,7 +152,9 @@ def _run_agent(
     temperature: float,
 ) -> tuple:
     """ReAct 에이전트가 주어진 도구를 선택·실행하고 (chunks, sources, answer)를 반환한다."""
-    llm = get_chat_llm(model=rag_engine_model(), temperature=temperature, max_tokens=3000)
+    llm = get_chat_llm(
+        model=rag_engine_model(), temperature=temperature, max_tokens=3000
+    )
     agent = create_react_agent(llm, tools=tools, prompt=system_prompt)
 
     user_msg = f"Question: {question}\nSearch query to use: {query}"

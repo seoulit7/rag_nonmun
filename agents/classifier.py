@@ -8,14 +8,21 @@ from utils.json_parser import parse_llm_json, fallback_classifier_json
 from core.llm_client import get_chat_llm, classifier_model
 
 
+# ── 규칙 기반 전문가 지문 (LLM 오분류 방지) ────────────────────────────────────
+_PROFESSIONAL_RULE = re.compile(
+    r"(?:기술하시오|설명하시오|요약하시오|비교하여\s*(?:설명하시오|기술하시오)"
+    r"|분류하여\s*기술(?:하시오)?)",
+)
+
 # ── 규칙 기반 Consumer 사전 분류 (LLM 오분류 방지) ──────────────────────────────
-# 한국어 일상 문체 패턴: 어떤 패턴이라도 매칭되면 LLM 없이 Consumer 확정
 _CONSUMER_RULE = re.compile(
     r'(?:'
     r'이유[는가이]\s*(?:무엇|뭔)'      # "이유는/가/이 무엇인가요?"
     r'|왜\s+.{1,30}?(?:나요|인가요|됩니까|합니까)\??'  # "왜 ~나요/인가요?"
     r'|오래\s+방치'                     # "오래 방치하면"
-    r'|어떻게\s+(?:다른|구별|대처|알)'  # "어떻게 다른가요/구별할 수 있나요"
+    r'|어떻게\s+(?:다른|구별|대처|알)'
+    r'|한\s*가지(?:만)?'
+    r'|알려\s*달라'  # "어떻게 다른가요/구별할 수 있나요"
     r'|피해야\s+하는'                   # "피해야 하는 이유"
     r'|알려주세요'                      # "알려주세요"
     r'|설명해주세요'                    # "설명해주세요"
@@ -94,6 +101,13 @@ _PROMPT = ChatPromptTemplate.from_messages([
 
 
 def _classify_with_llm(question: str) -> dict:
+    if _PROFESSIONAL_RULE.search(question):
+        return {
+            "level": "Professional",
+            "confidence": 0.97,
+            "reasoning": "규칙 기반: 시험·논술형 지문(기술하시오/설명하시오 등)",
+            "detected_intent": "기전_탐구",
+        }
     # 규칙 기반 사전 분류: 한국어 일상 문체 패턴 감지 시 LLM 없이 Consumer 확정
     if _CONSUMER_RULE.search(question):
         return {

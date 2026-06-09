@@ -24,7 +24,7 @@
 - 사용자 수준별 맞춤 답변 생성 (Flesch-Kincaid Grade Level 목표 적용)
 - RAGAS 자동 품질 평가 및 Self-Corrective Loop (Ablation 5조건 A~E)
 - 감사 로그 저장 (request_id당 N+1행: 평가마다 중간 행 + 최종 행, fk_grade 포함) 및 성능 시각화 대시보드 (7개 섹션)
-- STQS-40 표준 질문 세트를 이용한 5가지 Ablation Study 일괄 실험 (main.ipynb)
+- STQS-108 표준 질문 세트를 이용한 5가지 Ablation Study 일괄 실험 (main.ipynb)
 
 ### 1.3 정의 및 약어
 
@@ -41,7 +41,7 @@
 | Tier | 지식 검색 계층. Tier 0(VectorDB) → Tier 1(LLM) → Tier 2(Web) |
 | tier_path | 에스컬레이션 경로 문자열. "0" / "0→1" / "0→1→2" |
 | Ablation Study | 시스템 구성 요소를 변경하여 각 요소의 기여도를 측정하는 실험 |
-| STQS-40 | Standard Test Query Set. 20개 질환 × 2 수준(P/C) = 40개 표준 질문 |
+| STQS-108 | Standard Test Query Set. 22개 질환 × 2-3 수준(P/C/+Tier) = 108개 표준 질문 |
 | LangGraph | 상태 기반 LLM 워크플로우를 그래프 형태로 정의하는 프레임워크 |
 | FAISS | Facebook AI 유사도 검색 라이브러리. 벡터 인덱싱 및 검색에 사용 |
 | Professional (P) | 의료 전문가 사용자 수준 |
@@ -92,7 +92,7 @@
 연구자
   │
   ▼
-[main.ipynb] — STQS-40 × 5조건 = 200건 자동 실험
+[main.ipynb] — STQS-108 × 5조건 = 540건 자동 실험
 ```
 
 ### 2.3 사용자 특성
@@ -102,7 +102,7 @@
 | 일반인 (Consumer) | 증상 설명, 복용 여부 등 일반적인 의료 정보를 요청하는 사용자 |
 | 의료 전문가 (Professional) | 임상 용어, 약물 기전, 진단 기준 등 전문적인 의료 정보를 요청하는 사용자 |
 | 시스템 관리자 | 인덱스 재빌드, 로그 조회, 성능 모니터링을 수행하는 사용자 |
-| 연구자 | Ablation Study 실험 실행, STQS-40 평가, 논문 데이터 수집을 수행하는 사용자 |
+| 연구자 | Ablation Study 실험 실행, STQS-108 평가, 논문 데이터 수집을 수행하는 사용자 |
 
 ### 2.4 제약 사항
 
@@ -241,12 +241,12 @@
 
 | 요구사항 ID | FR-011 |
 |-------------|--------|
-| **요구사항명** | STQS-40 일괄 실험 (main.ipynb) |
+| **요구사항명** | STQS-108 일괄 실험 (main.ipynb) |
 | **우선순위** | 필수 (연구 목적) |
-| **설명** | main.ipynb는 STQS-40 표준 질문 세트(40건)와 5가지 조건(A~E)을 교차 실험하여 200건의 결과를 Supabase에 자동 저장해야 한다. |
-| **입력** | STQS-40 질문 목록 (20 질환 × 2 수준 = 40건), 각 질문의 disease, query_level_label, expected_tier |
-| **처리** | 5조건 × 40질문 = 200회 run_medical_self_corrective_rag() 호출 |
-| **출력** | rag_audit_log에 N+1행 × 200요청 INSERT (ablation_condition, query_index, disease 등 메타데이터 포함) |
+| **설명** | main.ipynb는 STQS-108 표준 질문 세트(108건)와 5가지 조건(A~E)을 교차 실험하여 540건의 결과를 Supabase에 자동 저장해야 한다. |
+| **입력** | STQS-108 질문 목록 (22 질환 × 2-3 수준 = 108건), 각 질문의 disease, query_level_label, expected_tier |
+| **처리** | 5조건 × 108질문 = 540회 run_medical_self_corrective_rag() 호출 |
+| **출력** | rag_audit_log에 N+1행 × 540요청 INSERT (ablation_condition, query_index, disease 등 메타데이터 포함) |
 
 ---
 
@@ -437,7 +437,7 @@
 
 - **PDF 문서**: MSD 매뉴얼 질환별 PDF (소비자용/전문가용)
 - **사용자 질문**: 한국어 자연어 텍스트
-- **STQS-40**: 표준 테스트 질문 세트 (main.ipynb에 정의, 40건)
+- **STQS-108**: 표준 테스트 질문 세트 (main.ipynb에 정의, 108건)
 
 ### 6.2 저장 데이터
 
@@ -469,15 +469,15 @@
 | FK Grade (Consumer) | ≤ 9 | 일반인 가독성 목표 (NIH 건강 정보 이해도 기준) |
 | FK Grade (Professional) | ≥ 12 | 전문가 가독성 목표 (의학 저널 평균 수준) |
 
-### 7.2 연구 성과 지표 (STQS-40 기준)
+### 7.2 연구 성과 지표 (STQS-108 기준)
 
 | 지표 | 목표값 | 조건 A 달성값 | 비고 |
 |------|--------|-------------|------|
-| Faithfulness (F) | ≥ 0.85 | 0.87 | STQS-40 Full System 결과 |
-| Answer Relevance (AR) | ≥ 0.80 | 0.84 | STQS-40 Full System 결과 |
-| Context Precision (CP) | ≥ 0.78 | 0.81 | STQS-40 Full System 결과 |
-| 할루시네이션 감소율 | ≥ 50% | 52.3% | 조건 A vs 조건 E 비교 |
-| 사용자 수준 분류 정확도 | ≥ 90% | 94% | Professional/Consumer 분류 |
+| Faithfulness (F) | ≥ 0.85 | 측정 중 | STQS-108 Full System 결과 |
+| Answer Relevance (AR) | ≥ 0.80 | 측정 중 | STQS-108 Full System 결과 |
+| Context Precision (CP) | ≥ 0.78 | 측정 중 | STQS-108 Full System 결과 |
+| 할루시네이션 감소율 | ≥ 50% | 측정 중 | 조건 A vs 조건 E 비교 |
+| 사용자 수준 분류 정확도 | ≥ 90% | 측정 중 | Professional/Consumer 분류 |
 | FK Grade Consumer 목표 달성률 | ≥ 70% | 측정 중 | fk_grade ≤ 9 비율 |
 | FK Grade Professional 목표 달성률 | ≥ 70% | 측정 중 | fk_grade ≥ 12 비율 |
 

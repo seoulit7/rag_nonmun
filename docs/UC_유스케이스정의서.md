@@ -293,20 +293,20 @@ E1. 재빌드 중 오류 발생 시 오류 메시지를 표시하고 "닫기" �
 | **유스케이스 ID** | UC-08 |
 | **유스케이스명** | Ablation Study 일괄 실험 |
 | **액터** | 연구자 |
-| **목적** | 5가지 시스템 조건(A~E)과 STQS-40 표준 질문 세트(40건)를 교차 실험하여 200건의 결과를 Supabase에 저장한다 |
+| **목적** | 5가지 시스템 조건(A~E)과 STQS-108 표준 질문 세트(108건)를 교차 실험하여 540건의 결과를 Supabase에 저장한다 |
 | **사전 조건** | Jupyter Notebook(`main.ipynb`)이 실행 가능하고, FAISS 인덱스와 API 키가 설정되어 있다 |
-| **사후 조건** | Supabase `rag_audit_log`에 200건의 요청 결과(각 요청당 N+1행)가 저장된다. is_final=TRUE 행에는 fk_grade가 포함된다. |
+| **사후 조건** | Supabase `rag_audit_log`에 540건의 요청 결과(각 요청당 N+1행)가 저장된다. is_final=TRUE 행에는 fk_grade가 포함된다. |
 
 **기본 흐름:**
 ```
 1. 연구자가 main.ipynb를 Jupyter Notebook에서 실행한다
-2. STQS-40 질문 목록(40건)과 5가지 실험 조건(A~E)이 정의되어 있다
+2. STQS-108 질문 목록(108건)과 5가지 실험 조건(A~E)이 정의되어 있다
 3. 외부 루프: 5가지 조건(A, B, C, D, E) 순회
-4. 내부 루프: 40개 질문 순회
+4. 내부 루프: 108개 질문 순회
    4a. run_medical_self_corrective_rag(
          question=q,
          ablation_condition=cond["key"],  # 'A'~'E'
-         query_index=idx,                 # 1-40
+         query_index=idx,                 # 1-108
          disease=disease,                 # 질환명
          query_level_label=level,         # 'P' 또는 'C'
          expected_tier=expected_tier,     # 0, 1, 또는 2
@@ -315,7 +315,7 @@ E1. 재빌드 중 오류 발생 시 오류 메시지를 표시하고 "닫기" �
    4b. critic 평가마다 save_loop_log() → is_final=FALSE 중간 행 INSERT
    4c. output_node 또는 fallback_node에서 save_audit_log() → is_final=TRUE 최종 행 INSERT
        (output: fk_grade 포함, fallback: fk_grade=NULL)
-5. 200건 완료 후 검증 쿼리(GROUP BY ablation_condition)로 건수 확인
+5. 540건 완료 후 검증 쿼리(GROUP BY ablation_condition)로 건수 확인
 ```
 
 **실험 조건별 동작:**

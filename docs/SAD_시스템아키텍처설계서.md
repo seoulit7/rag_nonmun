@@ -16,7 +16,7 @@
 | 버전 | 주요 변경사항 |
 |------|--------------|
 | v1.0 | 초기 아키텍처 설계 |
-| v2.0 | Ablation Study 5조건, STQS-40, 요청당 1행 감사 로그, FK Grade 기초 설계 |
+| v2.0 | Ablation Study 5조건, STQS-108, 요청당 1행 감사 로그, FK Grade 기초 설계 |
 | v3.0 | 감사 로그 N+1행 설계(save_loop_log 추가), fk_grade 컬럼 도입, Consumer/Professional 가독성 프롬프트, 성능 시각화 7개 섹션 확장 |
 
 ---
@@ -174,10 +174,10 @@ class GraphState(TypedDict):
     log:                      List[str]    # 실행 로그
     # ── Ablation Study 메타데이터 ──────────────────────────────────────
     ablation_condition:       str          # "A"~"E", ""=일반 운영
-    query_index:              int          # STQS-40 질문 번호 (1-40), 0=일반 운영
+    query_index:              int          # STQS-108 질문 번호 (1-108), 0=일반 운영
     disease:                  str          # 질환명
     query_level_label:        str          # "P"/"C" 정답 레이블, ""=일반 운영
-    expected_tier:            int          # STQS-40 예상 티어 (0/1/2), -1=해당없음
+    expected_tier:            int          # STQS-108 예상 티어 (0/1/2), -1=해당없음
 ```
 
 #### 3.2.2 LangGraph 노드 설계
@@ -525,7 +525,7 @@ app.py  (ablation_condition="A" 고정)
        └─ infra/evaluator.py            ← flesch_kincaid_grade_en (graph.py _output_node 호출)
        └─ config/settings.py (모든 임계값·모델명)
 
-main.ipynb  (ablation_condition="A"~"E", STQS-40 × 5조건 = 200실험)
+main.ipynb  (ablation_condition="A"~"E", STQS-108 × 5조건 = 540실험)
   └─ graph.py (run_medical_self_corrective_rag)  [동일 의존관계]
 
 ui/dashboard/performance_viz.py

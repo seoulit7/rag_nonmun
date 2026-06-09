@@ -36,10 +36,10 @@ class GraphState(TypedDict):
 
     # ── Ablation Study 메타데이터 ──────────────────────────────────────────────
     ablation_condition: str           # "A"~"E", ""=일반 운영
-    query_index: int                  # STQS-40 질문 번호 (1-40), 0=일반 운영
+    query_index: int                  # STQS 질문 번호 (1..108), 0=일반 운영
     disease: str                      # 질환명
     query_level_label: str            # "P"/"C" 정답 레이블, ""=일반 운영
-    expected_tier: int                # STQS-40 예상 티어 (0/1/2), -1=해당없음
+    expected_tier: int                # STQS 예상 티어 (0/1/2), -1=해당없음
 
 
 TIER_LABELS = {0: "VectorDB(FAISS)", 1: "LLM 학습데이터", 2: "웹검색(DuckDuckGo)"}

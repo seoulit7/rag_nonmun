@@ -70,13 +70,13 @@
 | **루프번호** | critic 평가 누적 횟수 (1부터 시작) | INTEGER | ✅ |
 | **최종여부** | 최종 출력 완료 행이면 TRUE | BOOLEAN | ✅ |
 | **Ablation 조건** | 실험 조건 ('A'~'E'), 일반 운영 시 NULL | CHAR(1) | - |
-| **질문 번호** | STQS-40 질문 순번 (1-40), 일반 운영 시 NULL | SMALLINT | - |
-| **질환명** | STQS-40 대상 질환, 일반 운영 시 NULL | VARCHAR | - |
-| **정답 레이블** | STQS-40 수준 정답 ('P'/'C'), 일반 운영 시 NULL | CHAR(1) | - |
+| **질문 번호** | STQS-108 질문 순번 (1-108), 일반 운영 시 NULL | SMALLINT | - |
+| **질환명** | STQS-108 대상 질환, 일반 운영 시 NULL | VARCHAR | - |
+| **정답 레이블** | STQS-108 수준 정답 ('P'/'C'), 일반 운영 시 NULL | CHAR(1) | - |
 | 사용자수준 | 분류된 사용자 유형 | VARCHAR | ✅ |
 | 원본질문 | 한국어 원문 질문 | TEXT | ✅ |
 | 최적화쿼리 | 최종 영문 검색 쿼리 | TEXT | - |
-| **예상 티어** | STQS-40 기대 도달 티어 (0/1/2), 일반 운영 시 NULL | SMALLINT | - |
+| **예상 티어** | STQS-108 기대 도달 티어 (0/1/2), 일반 운영 시 NULL | SMALLINT | - |
 | **최종 티어** | 실제 답변이 생성된 검색 계층 | SMALLINT | ✅ |
 | **티어 경로** | 에스컬레이션 경로 ("0"/"0→1"/"0→1→2") | VARCHAR | ✅ |
 | **에스컬레이션여부** | Tier 이동 발생 여부 | BOOLEAN | ✅ |
@@ -258,13 +258,13 @@ CREATE TABLE public.rag_audit_log (
 | `loop_number` | INTEGER | NOT NULL | 1 | critic 평가 누적 회차 (save_audit_log에서는 최종 eval_count) |
 | `is_final` | BOOLEAN | NOT NULL | false | TRUE=최종 결과 행(final_answer 포함), FALSE=중간 평가 행 |
 | `ablation_condition` | CHAR(1) | NULL | NULL | Ablation Study 조건 ('A'~'E'). NULL=일반 운영 |
-| `query_index` | SMALLINT | NULL | NULL | STQS-40 질문 번호 (1-40). NULL=일반 운영 |
-| `disease` | VARCHAR(50) | NULL | NULL | STQS-40 질환명. NULL=일반 운영 |
-| `query_level_label` | CHAR(1) | NULL | NULL | STQS-40 수준 정답 레이블 ('P'/'C'). NULL=일반 운영 |
+| `query_index` | SMALLINT | NULL | NULL | STQS-108 질문 번호 (1-108). NULL=일반 운영 |
+| `disease` | VARCHAR(50) | NULL | NULL | STQS-108 질환명. NULL=일반 운영 |
+| `query_level_label` | CHAR(1) | NULL | NULL | STQS-108 수준 정답 레이블 ('P'/'C'). NULL=일반 운영 |
 | `user_level` | VARCHAR(20) | NOT NULL | — | 'Professional' 또는 'Consumer' |
 | `original_query` | TEXT | NOT NULL | — | 사용자가 입력한 한국어 원본 질문 |
 | `optimized_query` | TEXT | NULL | — | 마지막 루프에서 사용된 영문 최적화 검색 쿼리 |
-| `expected_tier` | SMALLINT | NULL | NULL | STQS-40 예상 티어 (0/1/2). NULL=일반 운영 |
+| `expected_tier` | SMALLINT | NULL | NULL | STQS-108 예상 티어 (0/1/2). NULL=일반 운영 |
 | `final_tier` | SMALLINT | NOT NULL | 0 | 최종 답변이 생성된 검색 계층 (0/1/2) |
 | `tier_path` | VARCHAR(20) | NOT NULL | '0' | 에스컬레이션 경로. "0" / "0→1" / "0→1→2" |
 | `is_escalated` | BOOLEAN | NOT NULL | false | Tier 에스컬레이션 발생 여부 (tier_path != "0") |
@@ -298,7 +298,7 @@ CREATE INDEX idx_audit_final       ON public.rag_audit_log (request_id, is_final
 | `idx_audit_ablation` | `ablation_condition` | 조건별 성능 비교 집계 |
 | `idx_audit_request` | `request_id` | 단일 요청 조회 |
 | `idx_audit_disease` | `disease` | 질환별 분석 |
-| `idx_audit_query_index` | `query_index` | STQS-40 질문 번호별 분석 |
+| `idx_audit_query_index` | `query_index` | STQS-108 질문 번호별 분석 |
 | `idx_audit_final` | `(request_id, is_final)` | 최종 결과만 조회 시 성능 향상 |
 
 ---
