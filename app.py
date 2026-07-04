@@ -30,72 +30,70 @@ for key, default in SESSION_DEFAULTS.items():
 
 user_persona, llm_backend, dashboard_menu = render_sidebar()
 
-# ── 대시보드 메뉴 선택 시 해당 화면만 표시 ────────────────────────────────────
-if dashboard_menu == "로그 조회":
+if dashboard_menu == "Log Query":
     from ui.dashboard import render_log_viewer
     render_log_viewer()
     st.stop()
 
-elif dashboard_menu == "성능 시각화":
+elif dashboard_menu == "Performance Visualization":
     from ui.dashboard import render_performance_viz
     render_performance_viz()
     st.stop()
 
-# ── 기본 RAG 화면 ─────────────────────────────────────────────────────────────
 render_pdf_uploader()
 render_header()
 
-question = st.text_area("문의할 내용을 입력하세요:", height=120)
+question = st.text_area("Enter your medical question:", height=120)
 
-if st.button("질문 제출", type="primary"):
+if st.button("Submit Question", type="primary"):
     if not question.strip():
-        st.warning("질문을 입력해주세요.")
+        st.warning("Please enter a question.")
     else:
         forced = (
             None
-            if user_persona == "자동 분류"
-            else ("Professional" if user_persona == "의료 전문가" else "Consumer")
+            if user_persona == "Auto Detect"
+            else ("Professional" if user_persona == "Medical Professional" else "Consumer")
         )
-        prov = "gemini" if llm_backend == "Gemini" else "openai"
+        prov = "openai"
 
         for key, default in SESSION_DEFAULTS.items():
             st.session_state[key] = default
 
-        if prov == "gemini" and not settings.get_gemini_api_key().strip():
-            st.warning("Gemini를 사용하려면 .env에 GEMINI_API_KEY를 설정하세요.")
-        else:
-            try:
-                with st.status("⚙️ Self-Corrective RAG 실행 중...", expanded=True) as status:
+        try:
+            with st.status("⚙️ Running Self-Corrective RAG...", expanded=True) as status:
                     final_state = run_medical_self_corrective_rag(
                         question,
                         forced_user_level=forced,
                         step_callback=on_step,
                         llm_provider=prov,
-                        ablation_condition="A",   # app.py는 항상 Full System
+                        ablation_condition="A",
                     )
                     had_fallback = not (
                         final_state.get("critic_score", 0.0) >= settings.FAITHFULNESS_THRESHOLD
-                    ) or any("최대 재시도" in l for l in final_state.get("log", []))
+                    ) or any(
+                        "max retry" in l.lower() or "최대 재시도" in l
+                        for l in final_state.get("log", [])
+                    )
                     status.update(
-                        label="⚠️ 분석 완료 (신뢰도 부족)" if had_fallback else "✅ 분석 완료!",
+                        label="⚠️ Analysis complete (low confidence)" if had_fallback else "✅ Analysis complete!",
                         state="error" if had_fallback else "complete",
                         expanded=False,
                     )
 
-                st.session_state.logs = final_state["log"]
-                st.session_state.result = final_state["answer"]
-                st.session_state.detected_level = final_state["user_level"]
-                st.session_state.search_tier = final_state.get("search_tier", 0)
-                st.session_state.llm_provider = final_state.get("llm_provider", prov)
-                st.session_state.scores = {
-                    "faithfulness": final_state.get("critic_score", 0.0),
-                    "answer_relevance": final_state.get("answer_relevance_score", 0.0),
-                    "context_precision": final_state.get("context_precision_score", 0.0),
-                }
-                st.rerun()
+            st.session_state.logs = final_state["log"]
+            st.session_state.result = final_state["answer"]
+            st.session_state.detected_level = final_state["user_level"]
+            st.session_state.search_tier = final_state.get("search_tier", 0)
+            st.session_state.llm_provider = final_state.get("llm_provider", prov)
+            st.session_state.scores = {
+                "faithfulness": final_state.get("critic_score", 0.0),
+                "answer_relevance": final_state.get("answer_relevance_score", 0.0),
+                "context_precision": final_state.get("context_precision_score", 0.0),
+            }
+            st.rerun()
 
-            except Exception as e:
-                st.error(f"오류가 발생했습니다: {e}")
+        except Exception as e:
+            st.error(f"An error occurred: {e}")
 
 if st.session_state.scores:
     render_score_card(st.session_state.scores)

@@ -1,13 +1,12 @@
-"""Ablation Study Performance Visualization Dashboard.
+"""System Performance Visualization Dashboard.
 
-PDF 테스트 결과서 기반 7개 시각화:
-  1. RAGAS 메트릭 비교 (조건별 F / AR / CP)
-  2. 환각 감소 효과
-  3. 에스컬레이션 패턴 분석 (Tier 분포)
-  4. 수준 분류기 성능
-  5. 자가 교정 루프 수렴
-  6. 구성 요소 기여도 (Δk)
-  7. 계산 효율성 (처리 시간)
+Oracle rag_audit_log_bak-based visualization:
+  1. RAGAS Metric Comparison (Proposal System vs Baseline)
+  2. Escalation Pattern Analysis (Tier Distribution)
+  3. Level Classifier Performance
+  4. Self-Correction Loop Convergence
+  5. FK Grade Validation
+  6. Computational Efficiency (Processing Time)
 """
 
 from __future__ import annotations
@@ -26,27 +25,18 @@ import streamlit as st
 
 logger = logging.getLogger(__name__)
 
-# ── 상수 ───────────────────────────────────────────────────────────────────────
-_COND_ORDER = ["A", "B", "C", "D", "E"]
+# ── Constants ─────────────────────────────────────────────────────────────────
+_COND_ORDER = ["A", "E"]
 _COND_LABELS = {
-    "A": "A — Full System",
-    "B": "B — No Self-Correction",
-    "C": "C — No Multi-Tier",
-    "D": "D — No Level Classifier",
-    "E": "E — Baseline",
+    "A": "Proposal System",
+    "E": "Baseline",
 }
 _COND_SHORT = {
-    "A": "Full\nSystem",
-    "B": "No\nSelf-Corr",
-    "C": "No\nMulti-Tier",
-    "D": "No\nLevel-Cls",
+    "A": "Proposal\nSystem",
     "E": "Baseline",
 }
 _COND_COLORS = {
     "A": "#2ecc71",
-    "B": "#e67e22",
-    "C": "#e74c3c",
-    "D": "#9b59b6",
     "E": "#95a5a6",
 }
 _THRESHOLD = 0.80
@@ -56,57 +46,64 @@ matplotlib.rcParams["font.family"] = "DejaVu Sans"
 matplotlib.rcParams["axes.unicode_minus"] = False
 
 
-# ── 데이터 로드 ────────────────────────────────────────────────────────────────
+# ── Data Load ─────────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def _load_data() -> pd.DataFrame:
-    import psycopg2
+    import oracledb
     import config.settings as s
 
     sql = """
         SELECT
             request_id, ablation_condition, user_level, query_level_label,
-            final_tier, loop_number, is_final, self_correction_count,
+            query_index, final_tier, loop_number, is_final, self_correction_count,
             ragas_f, ragas_ar, ragas_cp, q_total,
-            hallucination_detected, hallucination_count,
             is_escalated, is_fallback,
             execution_time_ms, fk_grade, created_at
-        FROM public.rag_audit_log
+        FROM rag_audit_log_bak
         WHERE ablation_condition IS NOT NULL
         ORDER BY created_at, loop_number
     """
     try:
-        conn = psycopg2.connect(s.SUPABASE_DB_URL)
-        df = pd.read_sql(sql, conn)
+        conn = oracledb.connect(
+            user=s.ORACLE_USER, password=s.ORACLE_PASSWORD, dsn=s.ORACLE_DSN
+        )
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            cols = [d[0].lower() for d in cur.description]
+            rows = cur.fetchall()
         conn.close()
+        if not rows:
+            return pd.DataFrame(columns=cols)
+        df = pd.DataFrame(rows, columns=cols)
     except Exception as e:
         logger.error("Data load failed: %s", e)
         return pd.DataFrame()
 
-    for col in ["ragas_f", "ragas_ar", "ragas_cp", "q_total", "fk_grade"]:
+    for col in ["ragas_f", "ragas_ar", "ragas_cp", "q_total", "fk_grade", "query_index"]:
         df[col] = pd.to_numeric(df[col], errors="coerce")
+    df["query_index"] = df["query_index"].astype("Int64")
 
-    # q_total is defined as 0.4*F + 0.4*AR + 0.2*CP; recompute from DB metric values
     valid_q = df["ragas_f"].notna() & df["ragas_ar"].notna() & df["ragas_cp"].notna()
     df.loc[valid_q, "q_total"] = (
         0.4 * df.loc[valid_q, "ragas_f"]
         + 0.4 * df.loc[valid_q, "ragas_ar"]
         + 0.2 * df.loc[valid_q, "ragas_cp"]
     ).round(6)
+    # Tier 1: no F/CP -> Q_total = AR (also corrects legacy NULL rows)
+    tier1 = df["final_tier"] == 1
+    df.loc[tier1, "q_total"] = df.loc[tier1, "ragas_ar"].round(6)
 
     df["loop_number"] = df["loop_number"].fillna(1).astype(int)
     df["self_correction_count"] = df["self_correction_count"].fillna(0).astype(int)
     df["final_tier"] = df["final_tier"].fillna(0).astype(int)
-    df["is_final"] = df["is_final"].fillna(False).astype(bool)
-    df["is_escalated"] = df["is_escalated"].fillna(False).astype(bool)
-    df["is_fallback"] = df["is_fallback"].fillna(False).astype(bool)
-    df["hallucination_detected"] = (
-        df["hallucination_detected"].fillna(False).astype(bool)
-    )
-    df["hallucination_count"] = df["hallucination_count"].fillna(0).astype(int)
+    # Oracle stores BOOLEAN as NUMBER(1)
+    df["is_final"] = df["is_final"].fillna(0).astype(int).astype(bool)
+    df["is_escalated"] = df["is_escalated"].fillna(0).astype(int).astype(bool)
+    df["is_fallback"] = df["is_fallback"].fillna(0).astype(int).astype(bool)
     return df
 
 
-# ── 공통 헬퍼 ─────────────────────────────────────────────────────────────────
+# ── Common Helpers ────────────────────────────────────────────────────────────
 def _fig(w=10, h=5.5):
     sns.set_theme(style="whitegrid", font_scale=1.05)
     return plt.subplots(figsize=(w, h), dpi=150)
@@ -131,9 +128,30 @@ def _present_conds(df):
     return [c for c in _COND_ORDER if c in fin["ablation_condition"].values]
 
 
+def _tier0_qidx(fin: pd.DataFrame) -> set:
+    """query_index set (int) where condition A reached Tier 0."""
+    a_tier0 = fin[(fin["ablation_condition"] == "A") & (fin["final_tier"] == 0)]
+    return set(a_tier0["query_index"].dropna().astype(int).tolist())
+
+
 # ══════════════════════════════════════════════════════════════════════════════
-# 1. RAGAS 메트릭 비교
+# 1. RAGAS Metric Comparison
 # ══════════════════════════════════════════════════════════════════════════════
+def _cond_subset(fin: pd.DataFrame, c: str) -> pd.DataFrame:
+    """Return final rows for condition c.
+    Condition A: Tier 0 successes only.
+    Condition E: counterpart rows matching A's Tier 0 query_index (fair comparison).
+    """
+    sub = fin[fin["ablation_condition"] == c]
+    if c == "A":
+        sub = sub[sub["final_tier"] == 0]
+    else:
+        tier0_idx = _tier0_qidx(fin)
+        if tier0_idx:
+            sub = sub[sub["query_index"].dropna().astype(int).isin(tier0_idx)]
+    return sub
+
+
 def _plot_ragas_comparison(df):
     fin = _final(df)
     conds = _present_conds(df)
@@ -151,7 +169,7 @@ def _plot_ragas_comparison(df):
     for i, (col, lbl, color) in enumerate(metrics):
         means, errs = [], []
         for c in conds:
-            vals = fin[fin["ablation_condition"] == c][col].dropna().values
+            vals = _cond_subset(fin, c)[col].dropna().values
             means.append(vals.mean() if len(vals) else 0)
             errs.append(vals.std(ddof=1) / np.sqrt(len(vals)) if len(vals) > 1 else 0)
         bars = ax.bar(
@@ -196,8 +214,8 @@ def _plot_ragas_comparison(df):
         zorder=2,
     )
     ax.set_title(
-        "Table 1. RAGAS Metric + Q_total Comparison — Ablation 5 Conditions (Mean ± SEM)",
-        fontsize=13,
+        "Table 6. RAGAS Metric Comparison — Proposal System (Tier 0, n=A) vs Baseline (matched query_index, Mean ± SEM)",
+        fontsize=12,
         fontweight="bold",
         pad=14,
     )
@@ -215,109 +233,95 @@ def _table_ragas(df):
     fin = _final(df)
     rows = []
     for c in _COND_ORDER:
-        sub = fin[fin["ablation_condition"] == c]
+        sub = _cond_subset(fin, c)
 
-        def ms(col):
-            v = sub[col].dropna()
+        def ms(col, _sub=sub):
+            v = _sub[col].dropna()
             return f"{v.mean():.3f} ± {v.std(ddof=1) / np.sqrt(len(v)):.3f}" if len(v) > 1 else "—"
 
+        n_tier0 = len(_cond_subset(fin, "A"))
+        note = f" (Tier 0 only, n={n_tier0})" if c == "A" else f" (matched query_index, n={len(sub)})"
         rows.append(
             {
-                "조건": _COND_LABELS.get(c, c),
-                "F (충실도)": ms("ragas_f"),
-                "AR (답변관련성)": ms("ragas_ar"),
-                "CP (컨텍스트정밀도)": ms("ragas_cp"),
+                "Condition": _COND_LABELS.get(c, c) + note,
+                "F (Faithfulness)": ms("ragas_f"),
+                "AR (Answer Relevance)": ms("ragas_ar"),
+                "CP (Context Precision)": ms("ragas_cp"),
                 "Q_total": ms("q_total"),
-                "건수": len(sub),
+                "n": len(sub),
             }
         )
     return pd.DataFrame(rows)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# 2. 환각 감소 효과
-# ══════════════════════════════════════════════════════════════════════════════
-def _plot_hallucination(df):
+def _table_ttest(df) -> pd.DataFrame:
+    """Paired t-test: A (Tier 0) vs E (matched query_index counterpart)."""
+    try:
+        from scipy import stats as _stats
+    except ImportError:
+        return pd.DataFrame()
+
     fin = _final(df)
-    conds = _present_conds(df)
-    rates = []
-    for c in conds:
-        sub = fin[fin["ablation_condition"] == c]
-        rates.append(sub["hallucination_detected"].mean() * 100 if len(sub) else 0)
+    tier0_idx = _tier0_qidx(fin)
+    if not tier0_idx:
+        return pd.DataFrame()
 
-    baseline = rates[conds.index("E")] if "E" in conds else 0
+    a_sub = fin[(fin["ablation_condition"] == "A") & (fin["final_tier"] == 0)].copy()
+    e_sub = fin[
+        (fin["ablation_condition"] == "E")
+        & fin["query_index"].dropna().astype(int).isin(tier0_idx)
+    ].copy()
 
-    fig, ax = _fig(9, 5.5)
-    colors = [_COND_COLORS.get(c, "#95a5a6") for c in conds]
-    bars = ax.bar(
-        [_COND_SHORT[c] for c in conds],
-        rates,
-        color=colors,
-        alpha=0.85,
-        edgecolor="white",
-        linewidth=1.2,
-        zorder=3,
+    merged = a_sub.merge(
+        e_sub[["query_index", "ragas_f", "ragas_ar", "ragas_cp", "q_total"]],
+        on="query_index",
+        suffixes=("_a", "_e"),
+        how="inner",
     )
 
-    for bar, rate, c in zip(bars, rates, conds):
-        ax.text(
-            bar.get_x() + bar.get_width() / 2,
-            bar.get_height() + 0.5,
-            f"{rate:.1f}%",
-            ha="center",
-            va="bottom",
-            fontsize=11,
-            fontweight="bold",
-        )
-        if c != "E" and baseline > 0:
-            red = (baseline - rate) / baseline * 100
-            ax.text(
-                bar.get_x() + bar.get_width() / 2,
-                rate / 2,
-                f"↓{red:.1f}%",
-                ha="center",
-                va="center",
-                fontsize=9,
-                color="white",
-                fontweight="bold",
-            )
+    metric_pairs = [
+        ("ragas_f_a", "ragas_f_e", "Faithfulness (F)"),
+        ("ragas_ar_a", "ragas_ar_e", "Answer Relevance (AR)"),
+        ("ragas_cp_a", "ragas_cp_e", "Context Precision (CP)"),
+        ("q_total_a", "q_total_e", "Q-total"),
+    ]
 
-    ax.set_title(
-        "Table 2. Hallucination Rate Comparison — Ablation 5 Conditions",
-        fontsize=13,
-        fontweight="bold",
-        pad=14,
-    )
-    ax.set_ylabel("Hallucination Rate (%)", fontsize=11)
-    ax.set_ylim(0, (max(rates) if rates else 50) * 1.4)
-    ax.grid(True, axis="y", alpha=0.4)
-    fig.tight_layout()
-    return _savebuf(fig)
-
-
-def _table_hallucination(df):
-    fin = _final(df)
-    baseline_sub = fin[fin["ablation_condition"] == "E"]
-    baseline = (
-        baseline_sub["hallucination_detected"].mean() * 100 if len(baseline_sub) else 0
-    )
     rows = []
-    for c in _COND_ORDER:
-        sub = fin[fin["ablation_condition"] == c]
-        rate = sub["hallucination_detected"].mean() * 100 if len(sub) else 0
-        red = (baseline - rate) / baseline * 100 if baseline > 0 and c != "E" else None
+    for col_a, col_e, label in metric_pairs:
+        pairs = merged[[col_a, col_e]].dropna()
+        n = len(pairs)
+        if n < 2:
+            rows.append(
+                {"Metric": label, "N": n, "A mean": "—", "E mean": "—",
+                 "Δ (A−E)": "—", "t": "—", "p-value": "—", "sig": "—"}
+            )
+            continue
+        a_vals = pairs[col_a].values
+        e_vals = pairs[col_e].values
+        t_stat, p_val = _stats.ttest_rel(a_vals, e_vals)
+        sig = (
+            "***" if p_val < 0.001 else
+            "**"  if p_val < 0.01  else
+            "*"   if p_val < 0.05  else
+            "†"   if p_val < 0.10  else "ns"
+        )
         rows.append(
             {
-                "조건": _COND_LABELS.get(c, c),
-                "환각 비율": f"{rate:.1f}%",
-                "Baseline 대비 감소율": f"{red:.1f}%" if red is not None else "—",
+                "Metric": label,
+                "N": n,
+                "A mean": f"{a_vals.mean():.4f}",
+                "E mean": f"{e_vals.mean():.4f}",
+                "Δ (A−E)": f"{a_vals.mean() - e_vals.mean():+.4f}",
+                "t": f"{t_stat:.3f}",
+                "p-value": f"{p_val:.4f}",
+                "sig": sig,
             }
         )
     return pd.DataFrame(rows)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 3. 에스컬레이션 패턴 (Tier 분포 — 조건 A)
+# 2. Escalation Pattern (Tier Distribution — Proposal System)
 # ══════════════════════════════════════════════════════════════════════════════
 def _plot_tier_distribution(df):
     fin = _final(df)
@@ -346,7 +350,7 @@ def _plot_tier_distribution(df):
         at.set_fontsize(11)
         at.set_fontweight("bold")
     ax1.set_title(
-        "Tier Distribution (Condition A)", fontsize=12, fontweight="bold", pad=12
+        "Tier Distribution (Proposal System)", fontsize=12, fontweight="bold", pad=12
     )
 
     bars = ax2.bar(
@@ -361,7 +365,7 @@ def _plot_tier_distribution(df):
         ax2.text(
             bar.get_x() + bar.get_width() / 2,
             bar.get_height() + 0.3,
-            f"{cnt}건\n({cnt/total*100:.1f}%)",
+            f"{cnt}\n({cnt/total*100:.1f}%)",
             ha="center",
             va="bottom",
             fontsize=10,
@@ -373,7 +377,7 @@ def _plot_tier_distribution(df):
     ax2.grid(True, axis="y", alpha=0.4)
 
     fig.suptitle(
-        "Table 3. Tier Distribution — Escalation Pattern Analysis (Condition A)",
+        "Table 7. Tier Distribution — Escalation Pattern Analysis (Proposal System)",
         fontsize=13,
         fontweight="bold",
         y=1.02,
@@ -389,9 +393,9 @@ def _table_tier_distribution(df):
         return pd.DataFrame()
 
     tier_names = {
-        0: "Tier 0 (MSD 매뉴얼)",
-        1: "Tier 1 (LLM 지식)",
-        2: "Tier 2 (웹 검색)",
+        0: "Tier 0 (MSD Manual)",
+        1: "Tier 1 (LLM Knowledge)",
+        2: "Tier 2 (Web Search)",
     }
     pro = sub[sub["user_level"] == "Professional"]
     cons = sub[sub["user_level"] == "Consumer"]
@@ -408,23 +412,64 @@ def _table_tier_distribution(df):
         ct = len(total[total["final_tier"] == tier])
         rows.append(
             {
-                "티어": tier_names.get(tier, f"Tier {tier}"),
-                "전문가 쿼리": f"{cp} ({cp/n_pro*100:.0f}%)",
-                "일반인 쿼리": f"{cc} ({cc/n_cons*100:.0f}%)",
-                "전체": f"{ct} ({ct/n_tot*100:.0f}%)",
+                "Tier": tier_names.get(tier, f"Tier {tier}"),
+                "Professional": f"{cp} ({cp/n_pro*100:.0f}%)",
+                "Consumer": f"{cc} ({cc/n_cons*100:.0f}%)",
+                "Total": f"{ct} ({ct/n_tot*100:.0f}%)",
             }
         )
     return pd.DataFrame(rows)
 
 
+def _table_tier_performance(df) -> pd.DataFrame:
+    """조건 A의 티어별 최종 RAGAS 성능 요약 (비교 불가 주석 포함용 데이터)."""
+    fin = _final(df)
+    sub = fin[fin["ablation_condition"] == "A"]
+    if sub.empty:
+        return pd.DataFrame()
+
+    def ms(series):
+        v = series.dropna()
+        if len(v) == 0:
+            return "—"
+        if len(v) == 1:
+            return f"{v.iloc[0]:.3f}"
+        return f"{v.mean():.3f} ± {v.std(ddof=1):.3f}"
+
+    tier_meta = {
+        0: "Tier 0 — MSD Manual (VectorDB)",
+        1: "Tier 1 — LLM Knowledge",
+        2: "Tier 2 — Web Search",
+    }
+    rows = []
+    for tier in sorted(sub["final_tier"].unique()):
+        t_sub = sub[sub["final_tier"] == tier]
+        n = len(t_sub)
+        is_tier1 = (tier == 1)
+        avg_sc = (
+            f"{t_sub['self_correction_count'].mean():.1f}"
+            if tier == 0 else "—"
+        )
+        rows.append({
+            "Tier": tier_meta.get(tier, f"Tier {tier}"),
+            "n": n,
+            "F (Faithfulness)":      "N/A *" if is_tier1 else ms(t_sub["ragas_f"]),
+            "AR (Answer Relevance)": ms(t_sub["ragas_ar"]),
+            "CP (Context Precision)": "N/A *" if is_tier1 else ms(t_sub["ragas_cp"]),
+            "Q_total":               ms(t_sub["q_total"]),
+            "Avg Self-Correction":   avg_sc,
+        })
+    return pd.DataFrame(rows)
+
+
 # ══════════════════════════════════════════════════════════════════════════════
-# 4. 수준 분류기 성능
+# 3. Level Classifier Performance
 # ══════════════════════════════════════════════════════════════════════════════
 def _compute_classifier_metrics(df):
     sub = (
         df[
             df["is_final"]
-            & df["ablation_condition"].isin(["A", "B", "C"])
+            & df["ablation_condition"].isin(["A"])
             & df["query_level_label"].notna()
             & df["user_level"].notna()
         ]
@@ -500,17 +545,17 @@ def _plot_classifier(m):
         linestyle="--",
         linewidth=1.5,
         alpha=0.75,
-        label="90% 기준선",
+        label="90% Threshold",
         zorder=2,
     )
     ax.set_title(
-        "Table 4. Level Classifier Performance (Conditions A / B / C)",
+        "Table 8. Level Classifier Performance (Proposal System)",
         fontsize=13,
         fontweight="bold",
         pad=14,
     )
     ax.set_ylabel("Score", fontsize=11)
-    ax.set_ylim(0.6, 1.12)
+    ax.set_ylim(0.0, 1.15)
     ax.legend(fontsize=10)
     ax.grid(True, axis="y", alpha=0.4)
     fig.tight_layout()
@@ -518,10 +563,123 @@ def _plot_classifier(m):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 4-b. FK Grade — 수준 분류기 간접 검증
+# 4. Self-Correction Loop Convergence
 # ══════════════════════════════════════════════════════════════════════════════
-_FK_CONSUMER_MAX = 9.0  # Consumer 목표: Grade ≤ 9 (의료 도메인 특성 반영)
-_FK_PROFESSIONAL_MIN = 12.0  # Professional 기준: Grade ≥ 12 (대학 수준)
+def _plot_loop_convergence(df):
+    sub = df[
+        (df["ablation_condition"] == "A")
+        & (df["final_tier"] == 0)
+        & (df["is_final"] == True)  # final rows only — questions converged at loop N
+    ].copy()
+    if sub.empty:
+        return None
+
+    grp = (
+        sub[sub["q_total"].notna()]
+        .groupby("loop_number")["q_total"]
+        .agg(["mean", "std", "count"])
+        .reset_index()
+    )
+    if grp.empty:
+        return None
+    grp["ci"] = 1.96 * grp["std"] / np.sqrt(grp["count"])
+
+    fig, ax = _fig(8, 5.5)
+    ax.plot(
+        grp["loop_number"],
+        grp["mean"],
+        marker="o",
+        color="#2980b9",
+        linewidth=2.5,
+        markersize=9,
+        zorder=3,
+        label="Mean Q_total",
+    )
+    ax.fill_between(
+        grp["loop_number"],
+        grp["mean"] - grp["ci"],
+        grp["mean"] + grp["ci"],
+        alpha=0.18,
+        color="#2980b9",
+        label="95% CI",
+    )
+    for _, row in grp.iterrows():
+        ax.annotate(
+            f"{row['mean']:.3f}",
+            (row["loop_number"], row["mean"]),
+            textcoords="offset points",
+            xytext=(0, 12),
+            ha="center",
+            fontsize=10,
+            fontweight="bold",
+            color="#2c3e50",
+        )
+
+    for _, row in grp.iterrows():
+        loop_sub = sub[sub["loop_number"] == row["loop_number"]]["q_total"].dropna()
+        if len(loop_sub):
+            conv = (loop_sub >= _THRESHOLD).mean() * 100
+            ax.annotate(
+                f"Conv. {conv:.0f}%",
+                (row["loop_number"], row["mean"] - grp["ci"].max() - 0.04),
+                ha="center",
+                fontsize=8.5,
+                color="#7f8c8d",
+            )
+
+    ax.axhline(
+        _THRESHOLD,
+        color="#e74c3c",
+        linestyle="--",
+        linewidth=1.5,
+        alpha=0.8,
+        label=f"τ_Q = {_THRESHOLD}",
+    )
+    ax.set_title(
+        "Table 9. Self-Correction Loop Convergence — Tier0 Q_total (Proposal System)",
+        fontsize=13,
+        fontweight="bold",
+        pad=14,
+    )
+    ax.set_xlabel("Loop Number (Tier0 Evaluations)", fontsize=11)
+    ax.set_ylabel("Mean Q_total Score", fontsize=11)
+    ax.set_xticks(grp["loop_number"].tolist())
+    ax.set_ylim(0.45, 1.05)
+    ax.legend(fontsize=10)
+    ax.grid(True, alpha=0.4)
+    fig.tight_layout()
+    return _savebuf(fig)
+
+
+def _table_loop(df):
+    sub = df[
+        (df["ablation_condition"] == "A")
+        & (df["final_tier"] == 0)
+        & (df["is_final"] == True)  # final rows only — questions converged at loop N
+    ].copy()
+    rows = []
+    for lc in sorted(sub["loop_number"].unique()):
+        vals = sub[sub["loop_number"] == lc]["q_total"].dropna().values
+        if len(vals) == 0:
+            continue
+        conv = (vals >= _THRESHOLD).mean() * 100
+        rows.append(
+            {
+                "Loop": int(lc),
+                "Mean Q_total": round(float(vals.mean()), 3),
+                "Std Dev": round(float(vals.std(ddof=1)) if len(vals) > 1 else 0, 3),
+                "Conv. Rate (τ≥0.8)": f"{conv:.1f}%",
+                "n": len(vals),
+            }
+        )
+    return pd.DataFrame(rows) if rows else pd.DataFrame()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 5. FK Grade — Level Classifier Indirect Validation
+# ══════════════════════════════════════════════════════════════════════════════
+_FK_CONSUMER_MAX = 9.0
+_FK_PROFESSIONAL_MIN = 12.0
 
 
 def _plot_fk_grade(df):
@@ -535,7 +693,6 @@ def _plot_fk_grade(df):
     fig, axes = plt.subplots(1, 2, figsize=(13, 5.5), dpi=150)
     sns.set_theme(style="whitegrid", font_scale=1.05)
 
-    # ── 왼쪽: 박스플롯 (user_level별) ────────────────────────────────────────
     ax1 = axes[0]
     palette = {"Consumer": "#3498db", "Professional": "#e74c3c"}
     sns.boxplot(
@@ -581,10 +738,8 @@ def _plot_fk_grade(df):
     ax1.set_ylabel("FK Grade", fontsize=11)
     ax1.legend(fontsize=9, loc="upper left")
 
-    # ── 오른쪽: 조건별 평균 막대 ─────────────────────────────────────────────
     ax2 = axes[1]
     conds = _present_conds(df)
-    levels = ["Consumer", "Professional"]
     x = np.arange(len(conds))
     width = 0.32
     for i, (level, color) in enumerate(palette.items()):
@@ -637,7 +792,7 @@ def _plot_fk_grade(df):
     ax2.grid(True, axis="y", alpha=0.4)
 
     fig.suptitle(
-        "FK Grade — Level Classifier Indirect Validation (is_final=True only)",
+        "Table 10. FK Grade — Level Classifier Indirect Validation (is_final=1 only)",
         fontsize=13,
         fontweight="bold",
         y=1.02,
@@ -692,213 +847,7 @@ def _table_fk_grade(df):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 5. 자가 교정 루프 수렴
-# ══════════════════════════════════════════════════════════════════════════════
-def _plot_loop_convergence(df):
-    sub = df[(df["ablation_condition"] == "A") & (df["final_tier"] == 0)].copy()
-    if sub.empty:
-        return None
-
-    grp = (
-        sub[sub["q_total"].notna()]
-        .groupby("loop_number")["q_total"]
-        .agg(["mean", "std", "count"])
-        .reset_index()
-    )
-    if grp.empty:
-        return None
-    grp["ci"] = 1.96 * grp["std"] / np.sqrt(grp["count"])
-
-    fig, ax = _fig(8, 5.5)
-    ax.plot(
-        grp["loop_number"],
-        grp["mean"],
-        marker="o",
-        color="#2980b9",
-        linewidth=2.5,
-        markersize=9,
-        zorder=3,
-        label="Mean Q_total",
-    )
-    ax.fill_between(
-        grp["loop_number"],
-        grp["mean"] - grp["ci"],
-        grp["mean"] + grp["ci"],
-        alpha=0.18,
-        color="#2980b9",
-        label="95% CI",
-    )
-    for _, row in grp.iterrows():
-        ax.annotate(
-            f"{row['mean']:.3f}",
-            (row["loop_number"], row["mean"]),
-            textcoords="offset points",
-            xytext=(0, 12),
-            ha="center",
-            fontsize=10,
-            fontweight="bold",
-            color="#2c3e50",
-        )
-
-    # convergence ratio (Q_total >= threshold)
-    for _, row in grp.iterrows():
-        loop_sub = sub[sub["loop_number"] == row["loop_number"]]["q_total"].dropna()
-        if len(loop_sub):
-            conv = (loop_sub >= _THRESHOLD).mean() * 100
-            ax.annotate(
-                f"Conv. {conv:.0f}%",
-                (row["loop_number"], row["mean"] - grp["ci"].max() - 0.04),
-                ha="center",
-                fontsize=8.5,
-                color="#7f8c8d",
-            )
-
-    ax.axhline(
-        _THRESHOLD,
-        color="#e74c3c",
-        linestyle="--",
-        linewidth=1.5,
-        alpha=0.8,
-        label=f"τ_Q = {_THRESHOLD}",
-    )
-    ax.set_title(
-        "Table 5. Self-Correction Loop Convergence — Tier0 Q_total (Condition A)",
-        fontsize=13,
-        fontweight="bold",
-        pad=14,
-    )
-    ax.set_xlabel("Loop Number (Tier0 Evaluations)", fontsize=11)
-    ax.set_ylabel("Mean Q_total Score", fontsize=11)
-    ax.set_xticks(grp["loop_number"].tolist())
-    ax.set_ylim(0.45, 1.05)
-    ax.legend(fontsize=10)
-    ax.grid(True, alpha=0.4)
-    fig.tight_layout()
-    return _savebuf(fig)
-
-
-def _table_loop(df):
-    sub = df[(df["ablation_condition"] == "A") & (df["final_tier"] == 0)].copy()
-    rows = []
-    for lc in sorted(sub["loop_number"].unique()):
-        vals = sub[sub["loop_number"] == lc]["q_total"].dropna().values
-        if len(vals) == 0:
-            continue
-        conv = (vals >= _THRESHOLD).mean() * 100
-        rows.append(
-            {
-                "Loop": int(lc),
-                "Mean Q_total": round(float(vals.mean()), 3),
-                "Std Dev": round(float(vals.std(ddof=1)) if len(vals) > 1 else 0, 3),
-                "Conv. Rate (τ≥0.8)": f"{conv:.1f}%",
-                "n": len(vals),
-            }
-        )
-    return pd.DataFrame(rows) if rows else pd.DataFrame()
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# 6. 구성 요소 기여도 (Δk)
-# ══════════════════════════════════════════════════════════════════════════════
-def _compute_contribution(df):
-    fin = _final(df)
-    metrics = ["ragas_f", "ragas_ar", "ragas_cp", "q_total"]
-    m_labels = ["ΔF", "ΔAR", "ΔCP", "ΔQ"]
-    ablations = [
-        ("B", "Self-Correction (SC)"),
-        ("C", "Multi-Tier (MT)"),
-        ("D", "Level-Classifier (LC)"),
-    ]
-
-    a_vals = {}
-    for m in metrics:
-        v = fin[fin["ablation_condition"] == "A"][m].dropna().values
-        a_vals[m] = v.mean() if len(v) else None
-
-    rows = []
-    for cond, name in ablations:
-        row = {"Component": name, "Ablated Cond.": cond}
-        for m, lbl in zip(metrics, m_labels):
-            v = fin[fin["ablation_condition"] == cond][m].dropna().values
-            b = v.mean() if len(v) else None
-            row[lbl] = (
-                round(a_vals[m] - b, 4)
-                if (a_vals[m] is not None and b is not None)
-                else None
-            )
-        rows.append(row)
-    return pd.DataFrame(rows)
-
-
-def _plot_contribution(delta_df):
-    if delta_df.empty:
-        return None
-    m_labels = ["ΔF", "ΔAR", "ΔCP", "ΔQ"]
-    colors = ["#2980b9", "#e67e22", "#27ae60", "#9b59b6"]
-    names = delta_df["Component"].tolist()
-    x = np.arange(len(names))
-    width = 0.18
-    offsets = np.linspace(-1.5 * width, 1.5 * width, 4)
-
-    fig, ax = _fig(10, 5.5)
-    for i, (lbl, color, offset) in enumerate(zip(m_labels, colors, offsets)):
-        vals = delta_df[lbl].fillna(0).tolist()
-        bars = ax.bar(
-            x + offset,
-            vals,
-            width,
-            label=lbl,
-            color=color,
-            alpha=0.85,
-            edgecolor="white",
-            linewidth=1.2,
-        )
-        for bar, val in zip(bars, delta_df[lbl].tolist()):
-            if val is not None and not pd.isna(val):
-                label_text = f"+{val:.3f}" if val >= 0 else f"{val:.3f}"
-                if val >= 0:
-                    ax.text(
-                        bar.get_x() + bar.get_width() / 2,
-                        bar.get_height() + 0.003,
-                        label_text,
-                        ha="center",
-                        va="bottom",
-                        fontsize=8,
-                        fontweight="bold",
-                    )
-                else:
-                    ax.text(
-                        bar.get_x() + bar.get_width() / 2,
-                        bar.get_height() - 0.003,
-                        label_text,
-                        ha="center",
-                        va="top",
-                        fontsize=8,
-                        fontweight="bold",
-                        color="#c0392b",
-                    )
-
-    ax.set_title(
-        "Table 8. Ablation Component Contribution  Δk = Full(A) − Ablated",
-        fontsize=13,
-        fontweight="bold",
-        pad=14,
-    )
-    ax.set_xticks(x)
-    ax.set_xticklabels(names, fontsize=11)
-    ax.set_ylabel("Δ Metric  (higher = more contribution)", fontsize=11)
-    ax.axhline(0, color="#2c3e50", linewidth=0.8)
-    y_min = min(delta_df[m_labels].min().min() - 0.03, -0.02)
-    y_max = max(delta_df[m_labels].max().max() + 0.03, 0.22)
-    ax.set_ylim(y_min, y_max)
-    ax.legend(fontsize=10)
-    ax.grid(True, axis="y", alpha=0.4)
-    fig.tight_layout()
-    return _savebuf(fig)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# 7. 계산 효율성 (처리 시간)
+# 6. Computational Efficiency (Processing Time)
 # ══════════════════════════════════════════════════════════════════════════════
 def _plot_efficiency(df):
     fin = _final(df)
@@ -940,7 +889,7 @@ def _plot_efficiency(df):
         )
 
     ax.set_title(
-        "Table 7. Processing Time per Query — Ablation 5 Conditions",
+        "Table 11. Processing Time per Query — Proposal System vs Baseline",
         fontsize=13,
         fontweight="bold",
         pad=14,
@@ -960,97 +909,122 @@ def _table_efficiency(df):
         t = sub["execution_time_ms"].dropna() / 1000
         rows.append(
             {
-                "조건": _COND_LABELS.get(c, c),
-                "평균 처리 시간 (초)": (
+                "Condition": _COND_LABELS.get(c, c),
+                "Mean Processing Time (sec)": (
                     f"{t.mean():.1f} ± {t.std(ddof=1):.1f}" if len(t) > 1 else "—"
                 ),
-                "건수": len(sub),
+                "n": len(sub),
             }
         )
     return pd.DataFrame(rows)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 요약 카드
+# Summary Cards
 # ══════════════════════════════════════════════════════════════════════════════
 def _render_summary_cards(df):
     fin = _final(df)
-    cols = st.columns(5)
-    names = ["Full", "No SC", "No MT", "No LC", "Baseline"]
+    cols = st.columns(2)
+    names = ["Proposal System (Tier 0 only)", "Baseline (matched subset)"]
     for col, c, name in zip(cols, _COND_ORDER, names):
-        sub = fin[fin["ablation_condition"] == c]
-        avg_f = sub["ragas_f"].mean()
-        hallu = sub["hallucination_detected"].mean() * 100 if len(sub) else 0
+        sub = _cond_subset(fin, c)
+        avg_q = sub["q_total"].mean()
         col.metric(
-            label=f"[{c}] {name}",
-            value=f"F = {avg_f:.3f}" if not pd.isna(avg_f) else "—",
-            delta=f"환각 {hallu:.1f}%  |  {len(sub)}건",
+            label=name,
+            value=f"Q_total = {avg_q:.3f}" if not pd.isna(avg_q) else "—",
+            delta=f"n = {len(sub)}",
         )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 메인 렌더
+# Main Render
 # ══════════════════════════════════════════════════════════════════════════════
 def render_performance_viz() -> None:
     matplotlib.rcParams["font.family"] = "DejaVu Sans"
     matplotlib.rcParams["axes.unicode_minus"] = False
 
-    st.title("Ablation Study — Performance Visualization")
-    st.caption(
-        "논문 Ablation Study 결과 시각화 — Supabase `rag_audit_log` 기반 (조건 A~E)"
-    )
+    st.title("Performance Visualization")
+    st.caption("System performance visualization — Oracle `rag_audit_log_bak` (Proposal System vs Baseline)")
 
-    with st.spinner("데이터 로딩 중..."):
+    with st.spinner("Loading data..."):
         df = _load_data()
 
     if df.empty:
-        st.error("데이터를 불러오지 못했습니다. Supabase 연결을 확인하세요.")
+        st.error("Failed to load data. Please check the Oracle connection.")
         return
 
-    if st.button("새로고침", type="secondary"):
+    if st.button("Refresh", type="secondary"):
         st.cache_data.clear()
         st.rerun()
 
-    # ── 요약 카드 ──────────────────────────────────────────────────────────────
-    st.markdown("### 조건별 요약")
+    st.markdown("### Summary by Condition")
     _render_summary_cards(df)
     st.markdown("---")
 
-    # ── 1. RAGAS 메트릭 비교 ──────────────────────────────────────────────────
-    st.markdown("### 1. RAGAS 메트릭 비교")
-    st.caption("조건별 Faithfulness / Answer Relevance / Context Precision / Q_total 평균 ± SEM")
+    st.markdown("### Table 6. RAGAS Metric Comparison")
+    st.caption(
+        "**Fair subset comparison** — Proposal System: Tier 0 questions only (self-correction applied)  |  "
+        "Baseline: same query_index counterparts only (matched set)  |  Mean ± SEM"
+    )
     buf = _plot_ragas_comparison(df)
     if buf:
         st.image(buf, use_container_width=True)
     st.dataframe(_table_ragas(df), hide_index=True, use_container_width=True)
+
+    st.markdown("#### Paired t-test (A Tier 0 vs E matched counterpart)")
+    st.caption("Two-tailed paired t-test per metric  |  \\*\\*\\* p<.001  \\*\\* p<.01  \\* p<.05  † p<.10  ns p≥.10")
+    ttest_tbl = _table_ttest(df)
+    if not ttest_tbl.empty:
+        st.dataframe(
+            ttest_tbl.style.applymap(
+                lambda v: "color: #e74c3c; font-weight: bold"
+                if v in ("***", "**", "*")
+                else ("color: #e67e22" if v == "†" else ""),
+                subset=["sig"],
+            ),
+            hide_index=True,
+            use_container_width=True,
+        )
+    else:
+        st.info("scipy not available or insufficient data for t-test.")
     st.markdown("---")
 
-    # ── 2. 환각 감소 효과 ─────────────────────────────────────────────────────
-    st.markdown("### 2. 환각 감소 효과")
-    st.caption("조건별 환각 감지 비율 및 Baseline(E) 대비 감소율")
-    buf = _plot_hallucination(df)
-    if buf:
-        st.image(buf, use_container_width=True)
-    st.dataframe(_table_hallucination(df), hide_index=True, use_container_width=True)
-    st.markdown("---")
-
-    # ── 3. 에스컬레이션 패턴 ──────────────────────────────────────────────────
-    st.markdown("### 3. 에스컬레이션 패턴 분석 (Tier 분포 — 조건 A)")
-    st.caption("Full System 조건에서 Tier 0 → 1 → 2 분포")
+    st.markdown("### Table 7. Escalation Pattern Analysis (Tier Distribution — Proposal System)")
+    st.caption("Tier 0 → 1 → 2 distribution in the Proposal System condition")
     buf = _plot_tier_distribution(df)
     if buf:
         st.image(buf, use_container_width=True)
     else:
-        st.info("조건 A 데이터가 없습니다.")
+        st.info("No data for Condition A.")
     tier_tbl = _table_tier_distribution(df)
     if not tier_tbl.empty:
         st.dataframe(tier_tbl, hide_index=True, use_container_width=True)
+
+    st.markdown("#### Condition A — RAGAS Performance by Tier")
+    st.info(
+        "**Caution — Tier 1 and Tier 2 results cannot be directly compared with Condition E (Baseline).**\n\n"
+        "Condition E always operates on Tier 0 (VectorDB) only. "
+        "Questions that reach Tier 1 or Tier 2 are either outside MSD Manual coverage or cases where Tier 0 retrieval repeatedly failed, "
+        "making a fair comparison with Condition E results for the same question impossible.\n\n"
+        "The figures below represent **the degree of quality recovery after escalation** and should be interpreted "
+        "solely as a reference for internal system behavior — not as a performance comparison against Condition E.\n\n"
+        "\\* Tier 1 relies exclusively on LLM training data without any retrieved context, so F (Faithfulness) and CP (Context Precision) "
+        "are NULL by design and excluded from evaluation. Q_total is computed from AR alone."
+    )
+    try:
+        tier_perf_tbl = _table_tier_performance(df)
+    except Exception as _e:
+        tier_perf_tbl = pd.DataFrame()
+        st.exception(_e)
+    if not tier_perf_tbl.empty:
+        st.dataframe(tier_perf_tbl, hide_index=True, use_container_width=True)
+    else:
+        st.caption("No data — run Condition A batch experiment first, then click Refresh.")
     st.markdown("---")
 
-    # ── 4. 수준 분류기 성능 ───────────────────────────────────────────────────
-    st.markdown("### 4. 수준 분류기 성능 (조건 A / B / C)")
+    st.markdown("### Table 8. Level Classifier Performance (Proposal System)")
     st.caption(
-        "query_level_label (P/C) vs user_level 비교 — Accuracy / Precision / Recall / F1"
+        "query_level_label (P/C) vs user_level — Accuracy / Precision / Recall / F1"
     )
     m = _compute_classifier_metrics(df)
     if m:
@@ -1061,15 +1035,15 @@ def render_performance_viz() -> None:
             pd.DataFrame(
                 [
                     {
-                        "정확도": f"{m['Accuracy']*100:.1f}%",
-                        "정밀도": f"{m['Precision']*100:.1f}%",
-                        "재현율": f"{m['Recall']*100:.1f}%",
+                        "Accuracy": f"{m['Accuracy']*100:.1f}%",
+                        "Precision": f"{m['Precision']*100:.1f}%",
+                        "Recall": f"{m['Recall']*100:.1f}%",
                         "F1": f"{m['F1']*100:.1f}%",
                         "TP": m["TP"],
                         "TN": m["TN"],
                         "FP": m["FP"],
                         "FN": m["FN"],
-                        "전체 n": m["n"],
+                        "n": m["n"],
                     }
                 ]
             ),
@@ -1077,11 +1051,10 @@ def render_performance_viz() -> None:
             use_container_width=True,
         )
     else:
-        st.info("분류기 평가 데이터가 없습니다. (query_level_label 컬럼 필요)")
+        st.info("No classifier evaluation data. (query_level_label column required)")
     st.markdown("---")
 
-    # ── 5. 자가 교정 루프 수렴 ────────────────────────────────────────────────
-    st.markdown("### 5. Self-Correction Loop Convergence (Condition A)")
+    st.markdown("### Table 9. Self-Correction Loop Convergence (Proposal System)")
     st.caption("Mean Q_total and convergence rate per loop iteration (τ_Q = 0.8)")
     buf = _plot_loop_convergence(df)
     if buf:
@@ -1090,51 +1063,28 @@ def render_performance_viz() -> None:
     if not loop_tbl.empty:
         st.dataframe(loop_tbl, hide_index=True, use_container_width=True)
     else:
-        st.info("조건 A 데이터가 없습니다.")
+        st.info("No data for Condition A.")
     st.markdown("---")
 
-    # ── 6. FK Grade ─────────────────────────────────────────────────────────
-    st.markdown("### 6. FK Grade — Level Classifier Indirect Validation")
+    st.markdown("### Table 10. FK Grade — Level Classifier Indirect Validation")
     st.caption(
-        "FK Grade Level (English original, before Korean translation)  |  "
-        "Consumer target ≤ 9  |  Professional target ≥ 12  |  is_final=True only"
+        "FK Grade computed on the English RAG answer  |  "
+        "Consumer target ≤ 9  |  Professional target ≥ 12  |  is_final=1 only"
     )
     buf = _plot_fk_grade(df)
     if buf:
         st.image(buf, use_container_width=True)
     else:
-        st.info("fk_grade 데이터가 없습니다. (새 질의부터 측정 시작)")
+        st.info("No fk_grade data available.")
     fk_tbl = _table_fk_grade(df)
     if not fk_tbl.empty:
         st.dataframe(fk_tbl, hide_index=True, use_container_width=True)
     st.markdown("---")
 
-    # ── 7. 계산 효율성 ────────────────────────────────────────────────────────
-    st.markdown("### 7. 계산 효율성 (처리 시간)")
-    st.caption("조건별 쿼리당 평균 처리 시간 (초, 95% CI)")
+    st.markdown("### Table 11. Computational Efficiency (Processing Time)")
+    st.caption("Mean processing time per query by condition (sec, 95% CI)")
     buf = _plot_efficiency(df)
     if buf:
         st.image(buf, use_container_width=True)
     st.dataframe(_table_efficiency(df), hide_index=True, use_container_width=True)
     st.markdown("---")
-
-    # ── 8. 구성 요소 기여도 ───────────────────────────────────────────────────
-    st.markdown("### 8. Component Contribution  Δk = Full(A) − Ablated")
-    st.caption(
-        "Performance drop when each component (Self-Correction / Multi-Tier / Level-Classifier) is removed"
-    )
-    delta_df = _compute_contribution(df)
-    buf = _plot_contribution(delta_df)
-    if buf:
-        st.image(buf, use_container_width=True)
-    if not delta_df.empty:
-        display_df = delta_df.copy()
-        for col in ["ΔF", "ΔAR", "ΔCP", "ΔQ"]:
-            display_df[col] = display_df[col].apply(
-                lambda v: (
-                    (f"+{v:.3f}" if v >= 0 else f"{v:.3f}")
-                    if v is not None and not pd.isna(v)
-                    else "—"
-                )
-            )
-        st.dataframe(display_df, hide_index=True, use_container_width=True)

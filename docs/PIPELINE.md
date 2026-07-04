@@ -6,7 +6,7 @@
 
 사용자 수준 분류 LLM이 질문 문체·용어를 분석해 Professional(의료 전문가) 또는 Consumer(일반인)으로 분류한다. 이후 모든 단계의 쿼리 최적화와 답변 생성 스타일이 이 분류 결과를 따른다.
 
-> **Ablation 조건 D/E**: `run_medical_self_corrective_rag()` 호출 시 `forced_user_level="Consumer"`로 강제 고정되어 이 노드의 LLM 분류를 우회한다.
+> **조건 E (Baseline)**: `run_medical_self_corrective_rag()` 호출 시 `forced_user_level="Baseline"`으로 강제 고정되어 이 노드의 LLM 분류를 우회한다.
 
 ## 2. adaptive_query_rewriter Agent — 쿼리 최적화 / 재작성
 
@@ -70,20 +70,19 @@ LLM 기반 RAGAS 평가기로 3가지 지표를 산출한다.
 | Answer Relevance (AR) | 답변이 질문에 얼마나 관련 있는가 | Tier 0 즉시 에스컬: `AR < CRITICAL_AR_THRESHOLD`; Tier 1 단독 평가 지표 |
 | Context Precision (CP) | 검색 청크가 질의에 얼마나 정밀한가 | F·CP 동시 저조 시 즉시 에스컬 → `CRITICAL_F`·`CRITICAL_CP` |
 
-평가 완료 후 `critic_feedback` (개선 힌트), `hallucination_flags` (할루시네이션 항목 목록)도 생성한다.
+평가 완료 후 `critic_feedback` (개선 힌트 — 기준 미달 지표와 원인을 자연어로 요약한 문자열)을 생성한다.
 
-**루프 로그 저장**: 매 critic 평가 완료 후 `save_loop_log()`를 호출하여 Supabase에 중간 행(`is_final=FALSE`)을 INSERT한다. 최종 output/fallback 후 `save_audit_log()`로 최종 행(`is_final=TRUE`)을 추가로 INSERT한다. 따라서 request_id당 **N+1행**이 저장된다 (N=critic 평가 횟수).
+> **AR 첫 쿼리 고정**: AR(Answer Relevance)은 재시도·에스컬레이션으로 쿼리가 바뀌어도 **항상 첫 번째 쿼리(`queries[0]`)를 기준**으로 평가한다. 쿼리를 변경할수록 원래 질문 의도와 멀어져 AR 기준이 흔들리는 문제를 방지하기 위한 설계다.
 
-### 7.1 Ablation 조건별 라우팅 (_critic_node)
+**루프 로그 저장**: 매 critic 평가 완료 후 `save_loop_log()`를 호출하여 Oracle DB에 중간 행(`is_final=FALSE`)을 INSERT한다. 최종 output/fallback 후 `save_audit_log()`로 최종 행(`is_final=TRUE`)을 추가로 INSERT한다. 따라서 request_id당 **N+1행**이 저장된다 (N=critic 평가 횟수).
+
+### 7.1 조건별 라우팅 (_critic_node)
 
 `ablation_condition` 값에 따라 Self-Corrective Loop 동작이 달라진다.
 
 | 조건 | 이름 | Tier 0 동작 | Tier 소진 처리 |
 |------|------|------------|----------------|
-| **A** | Full System | 자가 교정 + 멀티 티어 에스컬레이션 (기본 동작) | Fallback |
-| **B** | No Self-Correction | 첫 실패 즉시 Tier 1 에스컬레이션 | Fallback |
-| **C** | No Multi-Tier | Tier 0 내 자가 교정만, 루프 소진 시 fallback | Fallback (Tier 고정) |
-| **D** | No Level Classifier | A와 동일 라우팅 (분류기만 Consumer 고정) | Fallback |
+| **A** | Proposal System | 자가 교정 + 멀티 티어 에스컬레이션 (기본 동작) | Fallback |
 | **E** | Baseline | RAGAS 평가 후 즉시 출력 (루프 없음) | 즉시 output |
 
 ### 7.2 tier_path 추적
@@ -103,9 +102,13 @@ LLM 기반 RAGAS 평가기로 3가지 지표를 산출한다.
 1. **FK Grade 계산**: `output_agent` 호출 *전* 영어 원문 답변(`state["answer"]`)에 대해 `flesch_kincaid_grade_en()`을 실행하여 Flesch-Kincaid Grade Level을 계산한다. 번역 후에는 영어 텍스트가 사라지므로 반드시 번역 전에 계산한다.
 2. **한국어 번역**: LLM이 답변 본문을 한국어로 번역한다 (원문이 영·중·일 등일 수 있음).
 3. **출처·면책 조항 추가**: 검색 출처(MSD 매뉴얼 파일·페이지 / LLM / 웹 URL)와 면책 조항을 추가한다.
-4. **감사 로그 저장**: `save_audit_log(fk_grade=fk)`를 호출하여 Supabase에 최종 행(`is_final=TRUE`)을 INSERT한다. `fk_grade`는 번역 전 영어 원문 기준 값이다.
+4. **감사 로그 저장**: `save_audit_log(fk_grade=fk)`를 호출하여 Oracle DB에 최종 행(`is_final=TRUE`)을 INSERT한다. `fk_grade`는 번역 전 영어 원문 기준 값이다.
 
 ## 9. fallback — 원문 제시
 
-모든 Tier를 소진하고도 `F < FAITHFULNESS_THRESHOLD`이면 신뢰할 수 있는 답변을 생성하지 못한 것으로 판단하고, 검색된 원문 자료를 그대로 제시한다.  
-완료 후 `save_audit_log(..., is_fallback=True, fk_grade=None)`를 호출한다. Fallback 답변은 한국어 서두와 영어 원문이 혼합되어 있으므로 FK Grade를 계산하지 않는다(NULL 저장).
+모든 Tier를 소진했을 때 두 단계로 처리한다.
+
+1. **best_answer 우선 사용**: 루프 전체에서 Q_total(`0.4·F + 0.4·AR + 0.2·CP`)이 가장 높은 답변(`best_answer`)이 존재하면 해당 답변을 사용한다. FK Grade를 계산한 후 `output_agent`로 한국어 번역까지 수행한다.
+2. **원문 제시 (최후 수단)**: `best_answer`가 없으면 검색된 원문 청크를 그대로 제시하고 `fk_grade=None`으로 저장한다.
+
+완료 후 `save_audit_log(..., is_fallback=True)`를 호출한다. 혼합 언어 답변(원문 제시)은 FK Grade를 계산하지 않으므로 `fk_grade=None`으로 저장한다.

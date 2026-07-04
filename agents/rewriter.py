@@ -16,16 +16,17 @@ from the MSD Manual (a professional medical reference written entirely in Englis
 
 Rules:
 - Output ONLY a JSON object, no other text.
-- The query must be in English regardless of the input language.
+- The query must be in English.
 - Use precise medical terminology appropriate for the user level.
 - For Professional level: use clinical/pharmacological terms, include differential diagnoses or mechanisms if relevant.
 - For Consumer level: use clear descriptive terms a patient would find in a medical reference.
+- For General level: use standard medical terminology without level-specific style constraints.
 - The query should be specific enough to retrieve targeted passages, not too broad.
 
 JSON format:
 {{
   "query": "<optimized English search query>",
-  "reasoning": "<why this query will retrieve the best results (Korean, 1 sentence)>"
+  "reasoning": "<why this query will retrieve the best results (1 sentence)>"
 }}"""
 
 _QUERY_REFINE_SYSTEM = """\
@@ -43,13 +44,13 @@ Rules:
 JSON format:
 {{
   "query": "<improved English search query>",
-  "reasoning": "<why this new angle will work better (Korean, 1 sentence)>"
+  "reasoning": "<why this new angle will work better (1 sentence)>"
 }}"""
 
 _OPTIMIZE_PROMPT = ChatPromptTemplate.from_messages([
     ("system", _QUERY_OPTIMIZER_SYSTEM),
     ("human", (
-        "User question (may be in Korean): {question}\n"
+        "User question: {question}\n"
         "User level: {user_level}\n"
         "Detected intent: {detected_intent}"
     )),
@@ -58,14 +59,13 @@ _OPTIMIZE_PROMPT = ChatPromptTemplate.from_messages([
 _REFINE_PROMPT = ChatPromptTemplate.from_messages([
     ("system", _QUERY_REFINE_SYSTEM),
     ("human", (
-        "Original question (may be in Korean): {question}\n"
+        "Original question: {question}\n"
         "User level: {user_level}\n"
         "Previously tried queries: {previous_queries}\n"
         "Last evaluation - Faithfulness: {faithfulness}, "
         "Answer Relevance: {answer_relevance}, "
         "Context Precision: {context_precision}\n"
-        "Failure analysis: {critic_feedback}\n"
-        "Hallucination flags: {hallu_summary}\n\n"
+        "Failure analysis: {critic_feedback}\n\n"
         "Generate an improved query that addresses these failures."
     )),
 ])
@@ -92,10 +92,8 @@ def _refine_query(
     faithfulness: float,
     answer_relevance: float,
     context_precision: float,
-    hallucination_flags: List[str],
     critic_feedback: str = "",
 ) -> dict:
-    hallu_summary = "; ".join(hallucination_flags[:3]) if hallucination_flags else "없음"
     llm = get_chat_llm(model=rewriter_model(), temperature=0.4, max_tokens=1024)
     chain = _REFINE_PROMPT | llm.bind(response_format={"type": "json_object"}) | StrOutputParser()
     raw = chain.invoke({
@@ -105,8 +103,7 @@ def _refine_query(
         "faithfulness": f"{faithfulness:.2f}",
         "answer_relevance": f"{answer_relevance:.2f}",
         "context_precision": f"{context_precision:.2f}",
-        "critic_feedback": critic_feedback or "없음",
-        "hallu_summary": hallu_summary,
+        "critic_feedback": critic_feedback or "N/A",
     })
     data = parse_llm_json(raw)
     if not (data.get("query") or "").strip():
@@ -119,26 +116,27 @@ def adaptive_query_rewriter(state: GraphState) -> GraphState:
 
     - 최초 실행: 사용자 질문 + 수준 + 의도를 분석해 MSD Manual 검색에
       최적화된 영문 쿼리를 생성한다.
-    - 재시도: 이전 쿼리의 실패 원인(Faithfulness, Answer Relevance, Context Precision,
-      할루시네이션)을 LLM에 제공해 더 정확한 쿼리로 개선한다.
+    - 재시도: 이전 쿼리의 실패 원인(Faithfulness, Answer Relevance, Context Precision)을
+      LLM에 제공해 더 정확한 쿼리로 개선한다.
     """
     q = state["question"]
     level = state["user_level"]
+    # Baseline(조건 E)은 레벨 중립 쿼리 생성
+    query_level = level if level in ("Professional", "Consumer") else "General"
     loop = state["loop_count"]
 
     if state.get("queries") and loop > 0:
         # Tier 0 자가 교정 루프 재시도: 실패 원인 기반 표적 수정
         result = _refine_query(
             question=q,
-            user_level=level,
+            user_level=query_level,
             previous_queries=state["queries"],
             faithfulness=state.get("critic_score", 0.0),
             answer_relevance=state.get("answer_relevance_score", 0.0),
             context_precision=state.get("context_precision_score", 0.0),
-            hallucination_flags=state.get("hallucination_flags", []),
             critic_feedback=state.get("critic_feedback", ""),
         )
-        state["log"].append(f"[Rewriter] 재시도 {loop}회차 - 쿼리 개선 모드")
+        state["log"].append(f"[Rewriter] Retry {loop} — query refinement mode")
     else:
         # 최초 호출 또는 Tier 에스컬레이션: 쿼리 최적화
         intent = "기타"
@@ -148,19 +146,19 @@ def adaptive_query_rewriter(state: GraphState) -> GraphState:
                 if m:
                     intent = m.group(1).rstrip(")")
                     break
-        result = _optimize_query(question=q, user_level=level, detected_intent=intent)
-        mode = f"Tier {state.get('search_tier', 0)} 에스컬레이션" if state.get("queries") else "최초 질의"
-        state["log"].append(f"[Rewriter] {mode} 최적화 모드")
+        result = _optimize_query(question=q, user_level=query_level, detected_intent=intent)
+        mode = f"Tier {state.get('search_tier', 0)} escalation" if state.get("queries") else "initial query"
+        state["log"].append(f"[Rewriter] {mode} optimization mode")
 
     optimized_query = (result.get("query") or "").strip()
     reasoning = (result.get("reasoning") or "").strip()
 
     if not optimized_query:
-        raise RuntimeError("LLM이 최적화된 쿼리를 생성하지 못했습니다.")
+        raise RuntimeError("LLM failed to generate an optimized query.")
 
     state["queries"].append(optimized_query)
-    state["log"].append(f"[Rewriter] 최적화 쿼리: '{optimized_query}'")
+    state["log"].append(f"[Rewriter] Optimized query: '{optimized_query}'")
     if reasoning:
-        state["log"].append(f"[Rewriter] 근거: {reasoning}")
+        state["log"].append(f"[Rewriter] Reasoning: {reasoning}")
 
     return state

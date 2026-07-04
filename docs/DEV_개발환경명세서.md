@@ -9,7 +9,7 @@
 
 ## 1. 개발 환경 개요
 
-본 시스템은 Python 기반의 LLM 응용 시스템으로, LangGraph 워크플로우, FAISS 벡터 검색, RAGAS 자동 평가, Flesch-Kincaid Grade Level 가독성 측정, Streamlit UI를 핵심 기술 스택으로 한다. 외부 LLM API(OpenAI/Gemini)와 Supabase PostgreSQL을 클라우드 서비스로 활용한다.
+본 시스템은 Python 기반의 LLM 응용 시스템으로, LangGraph 워크플로우, FAISS 벡터 검색, RAGAS 자동 평가, Flesch-Kincaid Grade Level 가독성 측정, Streamlit UI를 핵심 기술 스택으로 한다. 외부 LLM API(OpenAI/Gemini)와 Oracle Database를 활용한다.
 
 ---
 
@@ -100,7 +100,7 @@
 
 | 패키지 | 버전 | 용도 |
 |--------|------|------|
-| `psycopg2-binary` | 2.9.11 | Supabase PostgreSQL 직접 연결 |
+| `oracledb` | — | Oracle Database 직접 연결 (감사 로그 저장) |
 
 ### 4.8 데이터 처리 및 시각화
 
@@ -130,7 +130,7 @@
 
 | 서비스 | 유형 | 용도 |
 |--------|------|------|
-| **Supabase** | PostgreSQL (클라우드) | 감사 로그(`rag_audit_log`) 저장 및 대시보드 조회. N+1행 설계, fk_grade 컬럼 포함 |
+| **Oracle Database** | Oracle DB | 감사 로그(`rag_audit_log`) 저장 및 대시보드 조회. N+1행 설계, fk_grade 컬럼 포함 |
 
 ### 5.3 임베딩 모델
 
@@ -159,7 +159,9 @@ MEDICAL_RAG_RAGAS_LLM_MODEL=gpt-4o-mini
 MEDICAL_RAG_CLASSIFIER_MODEL=gpt-4o-mini
 
 # ── 데이터베이스 ─────────────────────────────
-SUPABASE_DB_URL=postgresql://postgres.[project-id]:[password]@[host]:5432/postgres
+ORACLE_USER=<사용자명>
+ORACLE_PASSWORD=<비밀번호>
+ORACLE_DSN=<host>:<port>/<service_name>
 
 # ── 경로 설정 ────────────────────────────────
 MEDICAL_RAG_DATA_DIR=data
@@ -230,13 +232,13 @@ poetry install
 ```bash
 # .env 파일 생성 후 API 키 입력
 cp .env.example .env
-# OPENAI_API_KEY, SUPABASE_DB_URL 필수 입력
+# OPENAI_API_KEY, ORACLE_USER/PASSWORD/DSN 필수 입력
 ```
 
-### 7.3 Supabase 테이블 생성
+### 7.3 Oracle 테이블 생성
 
 ```sql
--- DB 설계서의 CREATE TABLE 명령문 실행 (fk_grade 컬럼 포함)
+-- db/create_table.sql 스크립트를 Oracle SQL Developer 또는 sqlplus에서 실행
 -- docs/DB_데이터베이스설계서.md 섹션 3.1 참조
 ```
 
@@ -259,10 +261,10 @@ streamlit run app.py
 python launch.py
 ```
 
-### 7.6 Ablation Study 일괄 실험
+### 7.6 성능 평가 일괄 실험
 
 ```bash
-# Jupyter Notebook으로 실행 (5조건 × 40질문 = 200건 자동 실험)
+# Jupyter Notebook으로 실행 (2조건 × 240질문 = 480건 자동 실험)
 jupyter notebook main.ipynb
 ```
 
@@ -275,8 +277,8 @@ jupyter notebook main.ipynb
 | **IDE** | VSCode | 코드 편집, 디버깅 |
 | **버전관리** | Git | 소스 코드 관리 |
 | **패키지관리** | pip / Poetry | 의존성 관리 |
-| **DB 클라이언트** | Supabase Dashboard | 감사 로그 조회 및 관리 |
-| **실험 환경** | Jupyter Notebook | Ablation Study 일괄 실험 (main.ipynb) |
+| **DB 클라이언트** | Oracle SQL Developer / DBeaver | 감사 로그 조회 및 관리 |
+| **실험 환경** | Jupyter Notebook | 시스템 성능 평가 실험 (main.ipynb) |
 
 ---
 
@@ -298,12 +300,12 @@ jupyter notebook main.ipynb
 │              │   (Consumer ≤9 / Professional ≥12)       │
 │ PDF 처리     │ PyMuPDF 1.27.2 + RapidOCR 1.4.4         │
 │ 웹검색       │ DuckDuckGo Search 8.1.1                  │
-│ 데이터베이스 │ Supabase PostgreSQL (psycopg2 2.9.11)    │
+│ 데이터베이스 │ Oracle Database (oracledb)               │
 │              │   N+1행 설계 / fk_grade 컬럼 포함         │
 │ 시각화       │ Matplotlib 3.10 / Seaborn 0.13           │
 │              │   (matplotlib: 영어 텍스트 전용)           │
 │ 딥러닝       │ PyTorch 2.2.0 (CPU)                     │
-│ 실험 환경    │ Jupyter Notebook (Ablation Study)        │
+│ 실험 환경    │ Jupyter Notebook (성능 평가 실험)          │
 └──────────────┴──────────────────────────────────────────┘
 ```
 

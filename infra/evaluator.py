@@ -237,28 +237,6 @@ class OfficialRagasScores(NamedTuple):
     faithfulness: float
     answer_relevance: float
     context_precision: float
-    hallu_flags: List[str]
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 의료 도메인 할루시네이션 탐지 패턴
-# ──────────────────────────────────────────────────────────────────────────────
-_HALLU_PATTERNS = [
-    (re.compile(r"\d+(?:\.\d+)?\s*(?:mg|ml|mcg|μg|g|L|%|회|정|캡슐)"), "수치"),
-    (re.compile(r"[가-힣A-Za-z]{2,}(?:\s*\+\s*[가-힣A-Za-z]{2,})+"), "약물 배합"),
-    (re.compile(r"(?:1|2|3|4|5)(?:단계|차\s*치료|선\s*치료|라인)"), "치료 단계"),
-]
-
-
-def _detect_hallu_flags(answer: str, contexts: List[str]) -> List[str]:
-    ctx = " ".join(contexts)
-    flags: List[str] = []
-    for pattern, label in _HALLU_PATTERNS:
-        ans_matches = set(pattern.findall(answer))
-        ctx_matches = set(pattern.findall(ctx))
-        for m in ans_matches - ctx_matches:
-            flags.append(f"[Hallucination:{label}] '{m}'")
-    return flags
 
 
 def _safe_unit(v: float) -> float:
@@ -277,7 +255,7 @@ def _prep_contexts(chunks: Sequence[str]) -> List[str]:
         if t:
             out.append(t[:settings.RAGAS_CONTEXT_MAX_CHARS])
     if not out:
-        out = ["(검색된 컨텍스트 없음)"]
+        out = ["(no retrieved context)"]
     return out
 
 
@@ -344,12 +322,10 @@ def compute_official_ragas_scores(
         logger.warning("[RAGAS] scores F=%.3f AR=%.3f CP=%.3f | q=%r | ar_q=%r | a=%r | ctx=%d",
                        ff, ar, cp, q[:60], q_ar[:60], a[:60], len(ctx_list))
 
-        hallu_flags = _detect_hallu_flags(a, ctx_list)
         return OfficialRagasScores(
             faithfulness=ff,
             answer_relevance=ar,
             context_precision=cp,
-            hallu_flags=hallu_flags,
         )
 
     # Streamlit은 자체 이벤트 루프를 보유하므로 asyncio.run() 직접 호출 시
@@ -386,5 +362,4 @@ def compute_official_ragas_scores(
             faithfulness=0.0,
             answer_relevance=0.0,
             context_precision=0.0,
-            hallu_flags=[],
         )

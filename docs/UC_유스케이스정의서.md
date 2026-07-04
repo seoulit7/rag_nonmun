@@ -12,11 +12,11 @@
 | 액터 | 유형 | 설명 |
 |------|------|------|
 | **일반 사용자** | 주 액터 | 의료 정보를 질의하는 사용자. 일반인 또는 의료 전문가 |
-| **연구자 / 시스템 관리자** | 주 액터 | 인덱스 재빌드, 로그 조회, 성능 모니터링, Ablation Study 실험 수행 |
+| **연구자 / 시스템 관리자** | 주 액터 | 인덱스 재빌드, 로그 조회, 성능 모니터링, 시스템 성능 평가 실험 수행 |
 | **OpenAI API** | 보조 액터 | 사용자 분류, 쿼리 최적화, 답변 생성, 번역 수행 |
 | **Gemini API** | 보조 액터 | OpenAI 대체 LLM 백엔드 |
 | **FAISS VectorDB** | 보조 액터 | 벡터 유사도 검색 수행 |
-| **Supabase DB** | 보조 액터 | 감사 로그 저장 및 조회 (N+1행 INSERT) |
+| **Oracle DB** | 보조 액터 | 감사 로그 저장 및 조회 (N+1행 INSERT) |
 | **DuckDuckGo** | 보조 액터 | Tier 2 웹검색 수행 |
 
 ---
@@ -32,7 +32,7 @@
 | UC-05 | 전체 인덱스 재빌드 | 시스템 관리자 | 선택 |
 | UC-06 | 감사 로그 조회 | 시스템 관리자 | 선택 |
 | UC-07 | 성능 시각화 조회 | 시스템 관리자 / 연구자 | 선택 |
-| UC-08 | Ablation Study 일괄 실험 | 연구자 | 선택 |
+| UC-08 | 시스템 성능 평가 일괄 실험 | 연구자 | 선택 |
 
 ---
 
@@ -49,7 +49,7 @@
 | **액터** | 일반 사용자 |
 | **목적** | 의료 관련 질문을 입력하여 신뢰성 있는 한국어 답변을 제공받는다 |
 | **사전 조건** | 시스템이 정상 실행 중이며, FAISS 인덱스(`db/msd_faiss.index/`)가 존재한다 |
-| **사후 조건** | RAGAS 기준(F≥0.8, AR≥0.8, CP≥0.8)을 충족하는 한국어 답변이 화면에 표시되고, Supabase에 **critic 평가 횟수 N개의 중간 행(is_final=FALSE) + 최종 행 1개(is_final=TRUE)**가 INSERT된다. 최종 행에는 fk_grade가 포함된다. |
+| **사후 조건** | RAGAS 기준(F≥0.8, AR≥0.8, CP≥0.8)을 충족하는 한국어 답변이 화면에 표시되고, Oracle DB에 **critic 평가 횟수 N개의 중간 행(is_final=FALSE) + 최종 행 1개(is_final=TRUE)**가 INSERT된다. 최종 행에는 fk_grade가 포함된다. |
 
 **기본 흐름:**
 
@@ -60,7 +60,7 @@
 4. 시스템이 질문을 영문 의료 검색 쿼리로 최적화한다
 5. 시스템이 FAISS VectorDB에서 관련 청크를 검색한다 (Tier 0)
 6. 시스템이 RAGAS로 Faithfulness, Answer Relevance, Context Precision을 평가한다
-   → save_loop_log() : is_final=FALSE 중간 행 INSERT (eval_count=1)
+   → save_loop_log() : Oracle DB에 is_final=FALSE 중간 행 INSERT (eval_count=1)
 7. [F≥0.8 AND AR≥0.8 AND CP≥0.8] → 8단계로 진행
 8. 시스템이 사용자 수준별 FK Grade 목표를 적용하여 영문 답변을 생성한다
    (Consumer: ≤9, Professional: ≥12)
@@ -232,7 +232,7 @@ E1. 재빌드 중 오류 발생 시 오류 메시지를 표시하고 "닫기" �
 | **유스케이스명** | 감사 로그 조회 |
 | **액터** | 시스템 관리자 |
 | **목적** | 시스템의 질의 이력과 RAGAS 평가 결과를 조회한다 |
-| **사전 조건** | Supabase DB에 감사 로그가 저장되어 있다 |
+| **사전 조건** | Oracle DB에 감사 로그가 저장되어 있다 |
 | **사후 조건** | 로그 목록 및 선택한 로그의 상세 내용이 표시된다 |
 
 **기본 흐름:**
@@ -255,76 +255,72 @@ E1. 재빌드 중 오류 발생 시 오류 메시지를 표시하고 "닫기" �
 | **유스케이스 ID** | UC-07 |
 | **유스케이스명** | 성능 시각화 조회 |
 | **액터** | 시스템 관리자 / 연구자 |
-| **목적** | Ablation Study 결과를 7개 섹션 차트로 시각화하여 분석한다 |
+| **목적** | Proposal System vs Baseline 성능 비교를 7개 섹션 차트로 시각화하여 분석한다 |
 | **사전 조건** | rag_audit_log에 충분한 데이터가 존재한다 |
-| **사후 조건** | Ablation Study 결과 시각화 차트와 요약 통계가 표시된다 |
+| **사후 조건** | 시스템 성능 시각화 차트와 요약 통계가 표시된다 |
 
 **기본 흐름:**
 ```
 1. 관리자/연구자가 사이드바의 "📊 RAG 성능 대시보드"를 클릭한다
 2. "📈 성능 시각화" 버튼을 클릭한다
 3. rag_audit_log에서 is_final=TRUE 행의 최신 데이터를 로드한다 (5분 캐시)
-4. 요약 카드 표시: 조건별 F 점수, 환각 비율, 건수
+4. 요약 카드 표시: Proposal System / Baseline F 점수, 환각 비율, 건수
 5. 섹션 1 — RAGAS 메트릭 비교
-   : 조건별 F / AR / CP 평균 ± 95% CI 막대 차트 + 데이터 테이블
+   : Proposal System / Baseline F / AR / CP 평균 ± 95% CI 막대 차트 + 데이터 테이블
 6. 섹션 2 — 환각 감소 효과
-   : 조건별 환각 감지 비율 및 Baseline(E) 대비 감소율 + 테이블
-7. 섹션 3 — 에스컬레이션 패턴 분석 (Tier 분포 — 조건 A)
+   : 조건별 환각 감지 비율 및 Baseline 대비 감소율 + 테이블
+7. 섹션 3 — 에스컬레이션 패턴 분석 (Tier 분포 — Proposal System)
    : Tier 분포 파이차트 + 막대차트 + 전문가/일반인/전체 Tier별 쿼리 건수 표
-8. 섹션 4 — 수준 분류기 성능 (조건 A / B / C)
+8. 섹션 4 — 수준 분류기 성능 (Proposal System)
    : Accuracy / Precision / Recall / F1 막대 차트 + 혼동 행렬 테이블
 9. 섹션 4-b — FK Grade 간접 검증
    : user_level별 박스플롯 + 조건별 평균 막대차트 + 목표 달성률 상세 테이블
    (Consumer ≤9, Professional ≥12 목표 기준선 표시)
-10. 섹션 5 — Self-Correction Loop 수렴 (조건 A)
+10. 섹션 5 — Self-Correction Loop 수렴 (Proposal System)
     : 루프 번호별 Mean Q_total 추이 + 95% CI + 수렴율 + 테이블
-11. 섹션 6 — 구성 요소 기여도 Δk = Full(A) − Ablated
-    : 자가 교정(SC) / 멀티 티어(MT) / 수준 분류기(LC) 제거 시 ΔF/ΔAR/ΔCP/ΔQ
+11. 섹션 6 — FK Grade 검증
+    : Consumer/Professional 목표 달성률 시각화
 12. 섹션 7 — 계산 효율성 (처리 시간)
     : 조건별 평균 처리 시간 (초, 95% CI) + 테이블
 ```
 
 ---
 
-### UC-08: Ablation Study 일괄 실험
+### UC-08: 시스템 성능 평가 일괄 실험
 
 | 항목 | 내용 |
 |------|------|
 | **유스케이스 ID** | UC-08 |
-| **유스케이스명** | Ablation Study 일괄 실험 |
+| **유스케이스명** | 시스템 성능 평가 일괄 실험 |
 | **액터** | 연구자 |
-| **목적** | 5가지 시스템 조건(A~E)과 STQS-108 표준 질문 세트(108건)를 교차 실험하여 540건의 결과를 Supabase에 저장한다 |
+| **목적** | Proposal System(A)과 Baseline(E) 2가지 조건과 STQS-240 표준 질문 세트(240건)를 교차 실험하여 480건의 결과를 Oracle DB에 저장한다 |
 | **사전 조건** | Jupyter Notebook(`main.ipynb`)이 실행 가능하고, FAISS 인덱스와 API 키가 설정되어 있다 |
-| **사후 조건** | Supabase `rag_audit_log`에 540건의 요청 결과(각 요청당 N+1행)가 저장된다. is_final=TRUE 행에는 fk_grade가 포함된다. |
+| **사후 조건** | Oracle DB `rag_audit_log`에 480건의 요청 결과(각 요청당 N+1행)가 저장된다. is_final=TRUE 행에는 fk_grade가 포함된다. |
 
 **기본 흐름:**
 ```
 1. 연구자가 main.ipynb를 Jupyter Notebook에서 실행한다
-2. STQS-108 질문 목록(108건)과 5가지 실험 조건(A~E)이 정의되어 있다
-3. 외부 루프: 5가지 조건(A, B, C, D, E) 순회
-4. 내부 루프: 108개 질문 순회
+2. STQS-240 질문 목록(240건)과 2가지 실험 조건(A/E)이 정의되어 있다
+3. 외부 루프: 2가지 조건(A, E) 순회
+4. 내부 루프: 240개 질문 순회 (disease, level, q_num, question) 4-tuple
    4a. run_medical_self_corrective_rag(
-         question=q,
-         ablation_condition=cond["key"],  # 'A'~'E'
-         query_index=idx,                 # 1-108
+         question=question,
+         ablation_condition=cond["key"],  # 'A' 또는 'E'
+         query_index=q_num,               # 1-240
          disease=disease,                 # 질환명
          query_level_label=level,         # 'P' 또는 'C'
-         expected_tier=expected_tier,     # 0, 1, 또는 2
-         forced_user_level=...,           # A/B/C: None, D/E: "Consumer"
+         forced_user_level=...,           # A: None, E: "Baseline"
        ) 호출
    4b. critic 평가마다 save_loop_log() → is_final=FALSE 중간 행 INSERT
    4c. output_node 또는 fallback_node에서 save_audit_log() → is_final=TRUE 최종 행 INSERT
        (output: fk_grade 포함, fallback: fk_grade=NULL)
-5. 540건 완료 후 검증 쿼리(GROUP BY ablation_condition)로 건수 확인
+5. 480건 완료 후 검증 쿼리(GROUP BY ablation_condition)로 건수 확인
 ```
 
-**실험 조건별 동작:**
+**조건별 동작:**
 ```
-조건 A (Full System)       : 자가 교정 + 멀티 티어, 사용자 분류기 실행
-조건 B (No Self-Correction): 첫 실패 즉시 Tier 1 에스컬레이션
-조건 C (No Multi-Tier)     : Tier 0 내 자가 교정만, 소진 시 fallback
-조건 D (No Level Classifier): A와 동일 라우팅, user_level="Consumer" 고정
-조건 E (Baseline)          : RAGAS 평가 후 즉시 출력, user_level="Consumer" 고정
+조건 A (Proposal System): 자가 교정 + 멀티 티어, 사용자 분류기 실행
+조건 E (Baseline)       : RAGAS 평가 후 즉시 출력, user_level="Baseline" 고정
 ```
 
 **예외 흐름:**
@@ -363,8 +359,8 @@ E2. Supabase 연결 실패 시 로그에 오류 기록 후 계속 진행
                     │  UC-06: 감사 로그 조회                   │
                     │  UC-07: 성능 시각화 조회 (7개 섹션)        │
                     │                                        │
-  연구자      ────────►│  UC-08: Ablation Study 일괄 실험         │
-                    │    └─ <<include>> UC-01 ×200회           │
+  연구자      ────────►│  UC-08: 시스템 성능 평가 일괄 실험         │
+                    │    └─ <<include>> UC-01 ×480회           │
                     └────────────────────────────────────────┘
 ```
 
@@ -403,18 +399,16 @@ E2. Supabase 연결 실패 시 로그에 오류 기록 후 계속 진행
 → 감사 로그: tier_path="0→1→2", self_correction_count=0, is_escalated=true
 ```
 
-### 시나리오 3: 조건 B로 실험 (No Self-Correction)
+### 시나리오 3: Baseline으로 실험
 
 ```
-연구자: main.ipynb → 조건 B, 질문 #15 (골관절염, Professional)
-→ forced_user_level=None → LLM 분류: Professional
-→ Tier 0: F=0.52, AR=0.61 → 기준 미달 → 즉시 Tier 1 에스컬레이션 (재시도 없음)
-→ save_loop_log(): is_final=FALSE (Tier0 → 조건 B)
-→ Tier 1: AR=0.83 ≥ 0.8 → 성공 (Tier 1: AR만 평가)
-→ save_loop_log(): is_final=FALSE (Tier1, F=NULL, CP=NULL)
+연구자: main.ipynb → 조건 E (Baseline), 질문 #15 (골관절염, Professional)
+→ forced_user_level="Baseline" → LLM 분류 우회
+→ Tier 0: F=0.52, AR=0.61 → 즉시 출력 (Baseline: 재시도 없음)
+→ save_loop_log(): is_final=FALSE (Tier0 → 조건 E)
 → fk_grade 계산 → save_audit_log(): is_final=TRUE
-→ 감사 로그: ablation_condition="B", query_index=15, disease="골관절염",
-             tier_path="0→1", self_correction_count=0, fk_grade (값)
+→ 감사 로그: ablation_condition="E", query_index=15, disease="골관절염",
+             tier_path="0", self_correction_count=0, fk_grade (값)
 ```
 
 ### 시나리오 4: 관리자의 성능 모니터링 (7개 섹션)
@@ -422,15 +416,15 @@ E2. Supabase 연결 실패 시 로그에 오류 기록 후 계속 진행
 ```
 관리자: 사이드바 "📊 RAG 성능 대시보드" 클릭
 → "📈 성능 시각화" 선택
-→ 요약 카드: 조건 A~E별 F 점수, 환각 비율
-→ 섹션 1: RAGAS 메트릭 비교 — 조건별 막대차트
-→ 섹션 2: 환각 감소 — 조건 A가 조건 E 대비 52.3% 감소
+→ 요약 카드: Proposal System / Baseline F 점수, 환각 비율
+→ 섹션 1: RAGAS 메트릭 비교 — Proposal System / Baseline 막대차트
+→ 섹션 2: 환각 감소 — Proposal System이 Baseline 대비 52.3% 감소
 → 섹션 3: Tier 분포 — 파이차트 + 전문가/일반인 Tier별 표
            (Tier0: 38(76%)/42(84%), Tier1: 9(18%)/6(12%), Tier2: 3(6%)/2(4%))
 → 섹션 4: 수준 분류기 — Accuracy=94%, F1=0.93 확인
 → 섹션 4-b: FK Grade — Consumer 평균=8.5(≤9), Professional 평균=13.2(≥12) 확인
 → 섹션 5: Loop 수렴 — 루프 1→2→3 Q_total 상승 확인
-→ 섹션 6: 구성 요소 기여도 — SC(+0.12) > MT(+0.09) > LC(+0.05)
+→ 섹션 6: FK Grade 검증 — Consumer/Professional 목표 달성률 확인
 → 섹션 7: 처리 시간 — 조건별 평균 소요 시간 비교
 ```
 

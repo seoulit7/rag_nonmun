@@ -1,0 +1,84 @@
+-- ============================================================
+-- rag_audit_log_bak 테이블 생성 스크립트 (Oracle)
+-- rag_audit_log 백업용 — 구조 동일, 테이블명만 상이
+-- ============================================================
+
+-- 기존 객체 안전 삭제
+BEGIN EXECUTE IMMEDIATE 'DROP TABLE rag_audit_log_bak'; EXCEPTION WHEN OTHERS THEN IF SQLCODE != -942 THEN RAISE; END IF; END;
+/
+BEGIN EXECUTE IMMEDIATE 'DROP SEQUENCE rag_audit_log_bak_seq'; EXCEPTION WHEN OTHERS THEN IF SQLCODE != -2289 THEN RAISE; END IF; END;
+/
+
+-- 시퀀스
+CREATE SEQUENCE rag_audit_log_bak_seq
+    START WITH 1
+    INCREMENT BY 1
+    NOCACHE
+    NOCYCLE;
+/
+
+-- 테이블
+CREATE TABLE rag_audit_log_bak (
+    log_id                  NUMBER              NOT NULL,
+    request_id              VARCHAR2(36)        NOT NULL,
+    created_at              TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+
+    -- 루프 추적
+    loop_number             NUMBER(10)          DEFAULT 1   NOT NULL,
+    is_final                NUMBER(1)           DEFAULT 0   NOT NULL CHECK (is_final IN (0, 1)),
+
+    -- 실험 조건 ('A'=Proposal System, 'E'=Baseline, NULL=일반 운영)
+    ablation_condition      CHAR(1),
+    query_index             NUMBER(5),                      -- STQS 질문 번호 (1-240)
+    disease                 VARCHAR2(50),
+    query_level_label       CHAR(1),                        -- 'P'/'C'
+
+    -- 요청 정보
+    user_level              VARCHAR2(20)        NOT NULL,   -- 'Professional'/'Consumer'
+    original_query          VARCHAR2(1000)      NOT NULL,
+    optimized_query         VARCHAR2(1000),
+
+    -- 티어 라우팅
+    final_tier              NUMBER(5)           DEFAULT 0   NOT NULL,
+    tier_path               VARCHAR2(20)        DEFAULT '0' NOT NULL,   -- '0'/'0→1'/'0→1→2'
+    is_escalated            NUMBER(1)           DEFAULT 0   NOT NULL CHECK (is_escalated IN (0, 1)),
+    is_fallback             NUMBER(1)           DEFAULT 0   NOT NULL CHECK (is_fallback IN (0, 1)),
+    self_correction_count   NUMBER(5)           DEFAULT 0   NOT NULL,
+
+    -- RAGAS 평가 (Tier 1 행: ragas_f, ragas_cp, q_total = NULL)
+    ragas_f                 BINARY_DOUBLE,
+    ragas_ar                BINARY_DOUBLE,
+    ragas_cp                BINARY_DOUBLE,
+    q_total                 BINARY_DOUBLE,
+
+    -- 시스템
+    retrieved_doc_count     NUMBER(10),
+    llm_model               VARCHAR2(50),
+    execution_time_ms       NUMBER(10),         -- is_final=0 행은 NULL
+    final_answer            CLOB,               -- is_final=0 행은 NULL
+
+    -- 가독성 지표 (is_final=1 & is_fallback=0 행만 기록)
+    fk_grade                BINARY_DOUBLE,      -- Flesch-Kincaid Grade Level (영어 원문 기준)
+
+    CONSTRAINT pk_rag_audit_log_bak PRIMARY KEY (log_id)
+);
+/
+
+-- PK 자동 증가 트리거
+CREATE OR REPLACE TRIGGER rag_audit_log_bak_bir
+    BEFORE INSERT ON rag_audit_log_bak
+    FOR EACH ROW
+BEGIN
+    IF :NEW.log_id IS NULL THEN
+        :NEW.log_id := rag_audit_log_bak_seq.NEXTVAL;
+    END IF;
+END;
+/
+
+-- 인덱스
+CREATE INDEX idx_bak_ablation    ON rag_audit_log_bak (ablation_condition);
+CREATE INDEX idx_bak_request     ON rag_audit_log_bak (request_id);
+CREATE INDEX idx_bak_disease     ON rag_audit_log_bak (disease);
+CREATE INDEX idx_bak_query_index ON rag_audit_log_bak (query_index);
+CREATE INDEX idx_bak_final       ON rag_audit_log_bak (request_id, is_final);
+/

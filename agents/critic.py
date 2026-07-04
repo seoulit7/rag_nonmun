@@ -8,7 +8,7 @@ from infra.evaluator import compute_official_ragas_scores
 _SUMMARY_PREFIX = re.compile(r"^\[(Consumer|Professional) Summary\]\s*", re.IGNORECASE)
 
 
-def _build_critic_feedback(f: float, ar: float, cp: float, hallu_flags: list) -> str:
+def _build_critic_feedback(f: float, ar: float, cp: float) -> str:
     """점수 저하 원인을 자연어 텍스트로 요약한다."""
     parts = []
     if ar < settings.AR_THRESHOLD:
@@ -17,8 +17,6 @@ def _build_critic_feedback(f: float, ar: float, cp: float, hallu_flags: list) ->
         parts.append(f"F={f:.2f} (기준 {settings.FAITHFULNESS_THRESHOLD}): 답변이 컨텍스트에 근거하지 않음")
     if cp < settings.CP_THRESHOLD:
         parts.append(f"CP={cp:.2f} (기준 {settings.CP_THRESHOLD}): 검색된 청크 품질 불량")
-    if hallu_flags:
-        parts.append(f"할루시네이션: {'; '.join(hallu_flags[:3])}")
     return " / ".join(parts) if parts else "품질 기준 충족"
 
 
@@ -38,12 +36,10 @@ def critic_agent(state: GraphState) -> GraphState:
     state["critic_score"] = official.faithfulness
     state["answer_relevance_score"] = official.answer_relevance
     state["context_precision_score"] = official.context_precision
-    state["hallucination_flags"] = official.hallu_flags
     state["critic_feedback"] = _build_critic_feedback(
         official.faithfulness,
         official.answer_relevance,
         official.context_precision,
-        official.hallu_flags,
     )
 
     state["log"].append(
@@ -51,8 +47,6 @@ def critic_agent(state: GraphState) -> GraphState:
         f"F={official.faithfulness:.3f}, AR={official.answer_relevance:.3f}, CP={official.context_precision:.3f}"
     )
     state["log"].append(f"[Critic] 피드백: {state['critic_feedback']}")
-    for flag in official.hallu_flags:
-        state["log"].append(f"[Critic] {flag}")
 
     return state
 

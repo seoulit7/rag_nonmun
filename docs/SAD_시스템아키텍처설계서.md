@@ -16,7 +16,7 @@
 | 버전 | 주요 변경사항 |
 |------|--------------|
 | v1.0 | 초기 아키텍처 설계 |
-| v2.0 | Ablation Study 5조건, STQS-108, 요청당 1행 감사 로그, FK Grade 기초 설계 |
+| v2.0 | Proposal System vs Baseline 2조건, STQS-40, 요청당 1행 감사 로그, FK Grade 기초 설계 |
 | v3.0 | 감사 로그 N+1행 설계(save_loop_log 추가), fk_grade 컬럼 도입, Consumer/Professional 가독성 프롬프트, 성능 시각화 7개 섹션 확장 |
 
 ---
@@ -33,7 +33,7 @@
 | **계층형 아키텍처** | UI → 비즈니스 로직(Graph) → 인프라 → 외부 API |
 | **Self-Corrective Loop** | RAGAS 평가 결과에 따라 동적으로 라우팅되는 피드백 루프 |
 | **다중 계층 폴백** | Tier 0 → Tier 1 → Tier 2 → Fallback 순의 계단식 에스컬레이션 |
-| **Ablation Study** | 5가지 조건(A~E) 분기 라우팅으로 컴포넌트별 기여도 측정 |
+| **조건 비교** | Proposal System(A) vs Baseline(E) 2가지 조건 비교 |
 
 ### 2.2 전체 시스템 구성도
 
@@ -52,7 +52,7 @@
 └─────────┼───────────────────────────────────────────────────────────┘
           │  run_medical_self_corrective_rag(ablation_condition="A")
           │
-          │  main.ipynb: run_medical_self_corrective_rag(ablation_condition="A"~"E")
+          │  main.ipynb: run_medical_self_corrective_rag(ablation_condition="A"/"E")
 ┌─────────▼───────────────────────────────────────────────────────────┐
 │                      Business Logic Layer                            │
 │                                                                      │
@@ -62,9 +62,9 @@
 │  │  [level_classifier] ──► [query_rewriter] ──► [rag_engine]    │  │
 │  │         │                      ▲                  │           │  │
 │  │         │                      │ (Self-Corrective │           │  │
-│  │         │                      │   Loop / A,C,D)  ▼           │  │
+│  │         │                      │   Loop / A)      ▼           │  │
 │  │         │                  [critic] ◄──────────────           │  │
-│  │         │              (Ablation A~E 분기 라우팅)              │  │
+│  │         │              (A/E 조건별 라우팅)                     │  │
 │  │         │               ┌──────┴──────┐                       │  │
 │  │         │               ▼             ▼                       │  │
 │  │         │     [output (_output_node)] [fallback]              │  │
@@ -100,8 +100,8 @@
 ┌───────────▼─────────────────────▼─────────────────────▼────────────┐
 │                        External Services                             │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌────────┐  │
-│  │ FAISS Index  │  │  Supabase    │  │  OpenAI API  │  │DuckDuck│  │
-│  │ (로컬 폴더)  │  │  PostgreSQL  │  │  Gemini API  │  │Go API  │  │
+│  │ FAISS Index  │  │   Oracle     │  │  OpenAI API  │  │DuckDuck│  │
+│  │ (로컬 폴더)  │  │  Database    │  │  Gemini API  │  │Go API  │  │
 │  └──────────────┘  └──────────────┘  └──────────────┘  └────────┘  │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -122,7 +122,7 @@
 | 점수 카드 | `ui/score_card.py` | F/AR/CP 점수 카드 렌더링 |
 | 결과 패널 | `ui/result_panel.py` | 최종 답변 표시 |
 | 로그 뷰어 | `ui/dashboard/log_viewer.py` | 감사 로그 목록/상세 조회 |
-| 성능 시각화 | `ui/dashboard/performance_viz.py` | Ablation Study 7개 섹션 시각화 차트 |
+| 성능 시각화 | `ui/dashboard/performance_viz.py` | Proposal System vs Baseline 7개 섹션 시각화 차트 |
 
 **Streamlit 세션 상태 관리:**
 
@@ -158,26 +158,27 @@ class GraphState(TypedDict):
     answer:                   str          # 현재 생성된 답변
     # ── RAGAS 평가 결과 ────────────────────────────────────────────────
     critic_score:             float        # Faithfulness (0~1)
-    answer_relevance_score:   float        # Answer Relevance (0~1)
+    answer_relevance_score:   float        # Answer Relevance (0~1); AR은 항상 queries[0] 기준 평가
     context_precision_score:  float        # Context Precision (0~1)
-    hallucination_flags:      List[str]    # 할루시네이션 감지 플래그
-    critic_feedback:          str          # RAGAS 개선 힌트 (재쿼리용)
+    critic_feedback:          str          # 기준 미달 지표·원인을 자연어로 요약한 재쿼리 힌트
     # ── 티어 및 루프 ───────────────────────────────────────────────────
     search_tier:              int          # 현재 검색 티어 (0/1/2)
     loop_count:               int          # 현재 Tier 재시도 횟수
     tier_path:                str          # 에스컬레이션 경로: "0"/"0→1"/"0→1→2"
     self_correction_count:    int          # Tier 0 자가 교정 누적 횟수
     eval_count:               int          # critic 평가 누적 횟수
+    # ── Best Answer 추적 ──────────────────────────────────────────────────
+    best_answer:              str          # 루프 전체에서 Q_total이 가장 높은 답변 (Fallback 우선 사용)
+    best_q_total:             float        # 해당 답변의 Q_total (0.4·F + 0.4·AR + 0.2·CP)
     # ── 시스템 정보 ────────────────────────────────────────────────────
     llm_provider:             str          # "openai" | "gemini"
     workflow_start_time:      float        # time.time() 워크플로우 시작 시각
     log:                      List[str]    # 실행 로그
-    # ── Ablation Study 메타데이터 ──────────────────────────────────────
-    ablation_condition:       str          # "A"~"E", ""=일반 운영
-    query_index:              int          # STQS-108 질문 번호 (1-108), 0=일반 운영
+    # ── 실험 조건 메타데이터 ──────────────────────────────────────────
+    ablation_condition:       str          # "A"(Proposal System)/"E"(Baseline), ""=일반 운영
+    query_index:              int          # STQS-240 질문 번호 (1-240), None=일반 운영
     disease:                  str          # 질환명
     query_level_label:        str          # "P"/"C" 정답 레이블, ""=일반 운영
-    expected_tier:            int          # STQS-108 예상 티어 (0/1/2), -1=해당없음
 ```
 
 #### 3.2.2 LangGraph 노드 설계
@@ -186,7 +187,7 @@ class GraphState(TypedDict):
 level_classifier ──► query_rewriter ──► rag_engine ──► critic
                            ▲                              │
                            │    (Self-Corrective,         │ 성공: F≥0.8∧AR≥0.8∧CP≥0.8
-                           │     조건 A/C/D만 적용)       │
+                           │     Proposal System만 적용)  │
                            └──────────────────────────────┤
                                                           │ 기준 미달 (조건별 분기)
                                                           │
@@ -202,14 +203,14 @@ level_classifier ──► query_rewriter ──► rag_engine ──► critic
 
 | 노드 | 함수 | 역할 |
 |------|------|------|
-| `level_classifier` | `agents/classifier.py` | LLM으로 사용자 수준 분류 (조건 D/E는 Consumer 고정) |
+| `level_classifier` | `agents/classifier.py` | LLM으로 사용자 수준 분류 (조건 E는 Baseline 고정) |
 | `query_rewriter` | `agents/rewriter.py` | 한국어 질문 → 영문 의료 검색 쿼리 최적화 |
 | `rag_engine` | `agents/rag_engine.py` | Tier별 검색 및 수준별 맞춤 답변 합성 (FK Grade 목표 적용) |
-| `critic` | `agents/critic.py` + `graph.py` | RAGAS 3중 평가 + Ablation 조건별 Self-Corrective 라우팅 + save_loop_log() |
+| `critic` | `agents/critic.py` + `graph.py` | RAGAS 3중 평가 + A/E 조건별 Self-Corrective 라우팅 + save_loop_log() |
 | `output` | `agents/output.py` + `graph.py` | FK Grade 계산(번역 전) → 한국어 번역 → 출처·면책 조항 → save_audit_log(fk_grade) |
 | `fallback` | `graph.py` | 원문 제시 → save_audit_log(is_fallback=True, fk_grade=None) |
 
-#### 3.2.3 Self-Corrective Loop 라우팅 로직 (조건별)
+#### 3.2.3 Self-Corrective Loop 라우팅 로직
 
 ```
 critic 노드 평가 후 → save_loop_log() (is_final=FALSE) → 라우팅 결정:
@@ -225,14 +226,7 @@ critic 노드 평가 후 → save_loop_log() (is_final=FALSE) → 라우팅 결�
   F ≥ 0.8 AND AR ≥ 0.8 AND CP ≥ 0.8
     └─► output → END
 
-[Tier 0 실패 — 조건 B: No Self-Correction]
-  첫 실패 즉시 → search_tier=1, tier_path="0→1" → query_rewriter
-
-[Tier 0 실패 — 조건 C: No Multi-Tier]
-  loop < MAX_LOOPS → self_correction_count+1, loop+1 → query_rewriter (Tier 0 유지)
-  loop >= MAX_LOOPS → fallback
-
-[Tier 0 실패 — 조건 A/D: 기본 동작]
+[Tier 0 실패 — 조건 A: Proposal System (기본 동작)]
   is_critically_low (AR<0.3 OR F<0.3∧CP<0.2) → 즉시 search_tier=1
   loop >= MAX_LOOPS → search_tier=1, tier_path="0→1" → query_rewriter
   그 외 → self_correction_count+1, loop+1 → query_rewriter (Tier 0 재시도)
@@ -296,7 +290,7 @@ PDF 파일 (data/)
 - **save_loop_log()**: critic 평가 완료마다 호출. `is_final=FALSE`, `final_answer=NULL`, `fk_grade=NULL`로 중간 상태 INSERT
 - **save_audit_log()**: output_node 또는 fallback_node 완료 후 단 1회 호출. `is_final=TRUE`, `final_answer`, `fk_grade` 포함 INSERT
 - **UPDATE 없음**: INSERT only 패턴
-- **스레드 안전**: `threading.local()`로 스레드별 psycopg2 커넥션 관리
+- **스레드 안전**: `threading.local()`로 스레드별 oracledb 커넥션 관리
 
 ```
 critic_node 완료 (매 회차)
@@ -466,32 +460,24 @@ ContextVar[llm_provider]  ← "openai" | "gemini"
   → INSERT is_final=TRUE (tier_path="0→1→2", is_escalated=true, final_tier=2)
 ```
 
-### 4.3 Ablation Study 흐름 (조건 B: No Self-Correction)
+### 4.3 Baseline 흐름 (조건 E: 즉시 출력)
 
 ```
-main.ipynb → run_medical_self_corrective_rag(ablation_condition="B", query_index=7, ...)
+main.ipynb → run_medical_self_corrective_rag(ablation_condition="E", query_index=7, ...)
 
 [rag_engine - Tier 0] → answer 생성
     │
     ▼
-[critic] F=0.62, AR=0.58 → 기준 미달
-  조건 B: 재시도 없이 즉시 Tier 1 에스컬레이션
+[critic] F=0.62, AR=0.58 → 평가 완료
+  조건 E (Baseline): 결과 무관 즉시 output
   → save_loop_log() → INSERT is_final=FALSE
-  → search_tier=1, tier_path="0→1", self_correction_count=0
-    │
-    ▼
-[rag_engine - Tier 1] → answer 생성
-    │
-    ▼
-[critic] AR=0.83 ≥ 0.8 → 성공 (Tier 1: AR만 평가)
-  → save_loop_log() → INSERT is_final=FALSE (F=NULL, CP=NULL)
     │
     ▼
 [output]
   fk = flesch_kincaid_grade_en(state["answer"])
   save_audit_log(...)
-  → INSERT is_final=TRUE (ablation_condition="B", query_index=7,
-             tier_path="0→1", self_correction_count=0, is_escalated=true)
+  → INSERT is_final=TRUE (ablation_condition="E", query_index=7,
+             tier_path="0", self_correction_count=0, is_escalated=false)
 ```
 
 ---
@@ -525,11 +511,11 @@ app.py  (ablation_condition="A" 고정)
        └─ infra/evaluator.py            ← flesch_kincaid_grade_en (graph.py _output_node 호출)
        └─ config/settings.py (모든 임계값·모델명)
 
-main.ipynb  (ablation_condition="A"~"E", STQS-108 × 5조건 = 540실험)
+main.ipynb  (ablation_condition="A"/"E", STQS-240 × 2조건 = 480실험)
   └─ graph.py (run_medical_self_corrective_rag)  [동일 의존관계]
 
 ui/dashboard/performance_viz.py
-  └─ psycopg2 → Supabase (직접 쿼리)
+  └─ oracledb → Oracle Database (직접 쿼리)
   └─ matplotlib, seaborn (영어 텍스트만 사용 — 폰트 렌더링 안정성)
   └─ 7개 섹션 시각화 (RAGAS 비교 / 환각 / Tier 분포+표 / 분류기 / FK Grade / 루프 수렴 / 처리 시간)
 
@@ -567,7 +553,7 @@ medical_rag_graph.py  (하위 호환 re-export 모듈 — 직접 사용 지양)
 rag_nonmun/
 ├── app.py                    # Streamlit 진입점 (항상 조건 A 실행)
 ├── graph.py                  # LangGraph 그래프 빌드 및 실행
-├── main.ipynb                # Ablation Study 일괄 실험 (5조건 × 40질문 = 200건)
+├── main.ipynb                # 성능 평가 일괄 실험 (2조건 × 240질문 = 480건)
 ├── medical_rag_graph.py      # 하위 호환 re-export 모듈 (직접 사용 지양)
 ├── launch.py                 # CLI 실행 스크립트
 │
@@ -584,7 +570,7 @@ rag_nonmun/
 ├── infra/
 │   ├── vector_store.py       # FAISS 인덱스 빌드 및 관리 (BAAI/bge-base-en-v1.5)
 │   ├── evaluator.py          # RAGAS 공식 메트릭 평가 + flesch_kincaid_grade_en()
-│   └── audit_logger.py       # Supabase 감사 로그 저장 (N+1행: save_loop_log + save_audit_log)
+│   └── audit_logger.py       # Oracle DB 감사 로그 저장 (N+1행: save_loop_log + save_audit_log)
 │
 ├── tools/
 │   ├── vector_search.py      # FAISS 검색 도구 (LangChain Tool)
@@ -632,7 +618,7 @@ rag_nonmun/
 ### 8.1 LangGraph StateGraph 채택
 
 **결정**: 순수 Python 파이프라인 대신 LangGraph StateGraph 사용  
-**이유**: 조건부 라우팅(Self-Corrective Loop, 에스컬레이션, Ablation 5조건)을 선언적으로 정의할 수 있고, 노드 실행 순서를 그래프 구조로 명확히 표현 가능. `stream_mode="updates"`로 실시간 UI 업데이트 지원.
+**이유**: 조건부 라우팅(Self-Corrective Loop, 에스컬레이션, Proposal System/Baseline 분기)을 선언적으로 정의할 수 있고, 노드 실행 순서를 그래프 구조로 명확히 표현 가능. `stream_mode="updates"`로 실시간 UI 업데이트 지원.
 
 ### 8.2 RAGAS 비동기 평가 격리
 
@@ -659,9 +645,9 @@ rag_nonmun/
 **결정**: 기본값인 all-MiniLM-L6-v2 대신 BAAI/bge-base-en-v1.5 사용  
 **이유**: bge-base 모델은 영문 의료 도메인에서 더 높은 검색 정확도를 제공하며(768차원 vs 384차원), 정규화된 벡터를 생성하므로 L2 인덱스가 코사인 유사도와 동치.
 
-### 8.7 psycopg2 직접 연결
+### 8.7 oracledb 직접 연결
 
-**결정**: ORM 대신 psycopg2로 Supabase PostgreSQL 직접 연결  
+**결정**: ORM 대신 oracledb로 Oracle Database 직접 연결  
 **이유**: 감사 로그는 INSERT only 패턴이며, ORM 도입 시 의존성이 늘어남. 스레드별 커넥션 관리로 Streamlit 멀티스레드 환경에 대응.
 
 ### 8.8 싱글턴 그래프 인스턴스

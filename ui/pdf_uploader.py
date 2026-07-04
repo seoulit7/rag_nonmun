@@ -7,7 +7,6 @@ from tools.vector_search import add_pdfs_to_vector_db
 
 
 def _list_existing_pdfs() -> list:
-    """data 폴더에 있는 PDF 파일 목록을 반환한다."""
     data_path = Path(settings.DATA_DIR)
     if not data_path.exists():
         return []
@@ -15,38 +14,35 @@ def _list_existing_pdfs() -> list:
 
 
 def render_pdf_uploader() -> None:
-    """사이드바에 PDF 업로드 및 인덱스 재빌드 UI를 렌더링한다."""
+    """Render the PDF upload and index rebuild UI in the sidebar."""
     st.sidebar.markdown("---")
-    st.sidebar.subheader("📄 PDF 문서 관리")
+    st.sidebar.subheader("📄 PDF Document Management")
 
-    # 현재 등록된 PDF 목록
     existing = _list_existing_pdfs()
     if existing:
-        with st.sidebar.expander(f"등록된 PDF ({len(existing)}개)", expanded=False):
+        with st.sidebar.expander(f"Registered PDFs ({len(existing)})", expanded=False):
             for p in existing:
                 st.caption(f"• {p.name}")
     else:
-        st.sidebar.caption("등록된 PDF가 없습니다.")
+        st.sidebar.caption("No PDFs registered.")
 
-    # 파일 업로더
     uploaded = st.sidebar.file_uploader(
-        "PDF 업로드 (복수 선택 가능)",
+        "Upload PDFs (multiple files allowed)",
         type=["pdf"],
         accept_multiple_files=True,
-        help="업로드 후 '인덱스 재빌드' 버튼을 눌러 FAISS DB를 갱신하세요.",
+        help="After uploading, click 'Rebuild Index' to update the FAISS database.",
     )
 
     if not uploaded:
         return
 
-    st.sidebar.caption(f"{len(uploaded)}개 파일 선택됨")
+    st.sidebar.caption(f"{len(uploaded)} file(s) selected")
 
-    if not st.sidebar.button("🔄 인덱스 재빌드", type="primary", width="stretch"):
+    if not st.sidebar.button("🔄 Rebuild Index", type="primary", width="stretch"):
         return
 
-    # 진행 상황 표시 (메인 화면 중앙에 표시)
     st.markdown("---")
-    st.subheader("📊 FAISS 인덱스 재빌드")
+    st.subheader("📊 FAISS Index Rebuild")
     progress_bar = st.progress(0)
     status_text = st.empty()
 
@@ -58,15 +54,14 @@ def render_pdf_uploader() -> None:
         added_files, added_chunks = add_pdfs_to_vector_db(uploaded, on_progress=on_progress)
         progress_bar.progress(100)
         if added_files == 0:
-            status_text.warning("⚠️ 모두 이미 등록된 파일입니다. 새로 추가된 PDF가 없습니다.")
-            st.sidebar.warning("추가된 PDF 없음")
+            status_text.warning("⚠️ All files are already registered. No new PDFs were added.")
+            st.sidebar.warning("No new PDFs added")
         else:
             status_text.success(
-                f"✅ {added_files}개 PDF, {added_chunks}개 청크가 기존 DB에 추가되었습니다."
+                f"✅ {added_files} PDF(s) and {added_chunks} chunks added to the database."
             )
-            st.sidebar.success(f"✅ {added_files}개 PDF 추가 완료")
-        # 다음 질문 시 새 DB가 자동 사용됨 (initialize_vector_db는 _db=None 감지)
+            st.sidebar.success(f"✅ {added_files} PDF(s) added")
     except Exception as e:
         progress_bar.empty()
-        status_text.error(f"❌ 재빌드 실패: {e}")
-        st.sidebar.error("인덱스 재빌드 실패")
+        status_text.error(f"❌ Rebuild failed: {e}")
+        st.sidebar.error("Index rebuild failed")

@@ -1,4 +1,4 @@
-"""로그 조회 — 상세 화면."""
+"""Log viewer — detail screen."""
 from __future__ import annotations
 
 import streamlit as st
@@ -20,18 +20,17 @@ def _score_badge(val: float, threshold: float, label: str) -> str:
 
 
 def render_detail(request_id: str) -> None:
-    """단일 request_id 상세 화면을 렌더링한다."""
+    """Render the detail screen for a single request_id."""
 
-    # ── 뒤로가기 ─────────────────────────────────────────────────────────────
-    if st.button("← 목록으로", type="secondary"):
+    if st.button("← Back to List", type="secondary"):
         st.session_state["log_selected_id"] = None
         st.rerun()
 
-    st.subheader("로그 상세")
+    st.subheader("Log Detail")
 
     detail = fetch_detail(request_id)
     if not detail:
-        st.error("데이터를 불러올 수 없습니다.")
+        st.error("Could not load data.")
         return
 
     meta         = detail["meta"]
@@ -39,34 +38,32 @@ def render_detail(request_id: str) -> None:
     queries      = detail["queries"]
     final_answer = detail["final_answer"]
 
-    # ── 요청 정보 ─────────────────────────────────────────────────────────────
-    st.markdown("#### 요청 정보")
+    st.markdown("#### Request Info")
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("요청 ID",    meta["request_id"][:8] + "...")
-    c2.metric("일시",       meta["created_at"])
-    c3.metric("사용자 수준", meta["user_level"])
-    c4.metric("LLM",        meta["llm_model"] or "—")
+    c1.metric("Request ID",  meta["request_id"][:8] + "...")
+    c2.metric("Timestamp",   meta["created_at"])
+    c3.metric("User Level",  meta["user_level"])
+    c4.metric("LLM",         meta["llm_model"] or "—")
 
     st.markdown(
-        f"**원본 질문** &nbsp; `{meta['original_query']}`",
+        f"**Original Query** &nbsp; `{meta['original_query']}`",
         unsafe_allow_html=True,
     )
     st.markdown("---")
 
-    # ── 루프 이력 테이블 ──────────────────────────────────────────────────────
-    st.markdown("#### 루프 이력")
+    st.markdown("#### Loop History")
 
     show_cols = {
-        "tier_label":       "Tier",
-        "loop_number":      "Loop",
-        "ragas_f":          "F",
-        "ragas_ar":         "AR",
-        "ragas_cp":         "CP",
-        "is_escalated":     "에스컬",
-        "is_fallback":      "Fallback",
-        "retrieved_doc_count": "검색 청크",
-        "execution_time_ms":   "평가(ms)",
-        "created_at":       "일시",
+        "tier_label":          "Tier",
+        "loop_number":         "Loop",
+        "ragas_f":             "F",
+        "ragas_ar":            "AR",
+        "ragas_cp":            "CP",
+        "is_escalated":        "Escalated",
+        "is_fallback":         "Fallback",
+        "retrieved_doc_count": "Chunks",
+        "execution_time_ms":   "Time (ms)",
+        "created_at":          "Timestamp",
     }
     loops_view = loops_df[list(show_cols.keys())].rename(columns=show_cols).copy()
 
@@ -85,23 +82,20 @@ def render_detail(request_id: str) -> None:
     )
     st.dataframe(styled, width="stretch", hide_index=True)
 
-    # 에스컬레이션 원인 자동 분석
     _render_escalation_summary(loops_df)
 
     st.markdown("---")
 
-    # ── 최적화 쿼리 이력 ──────────────────────────────────────────────────────
-    st.markdown("#### 최적화 쿼리 이력")
+    st.markdown("#### Optimized Query History")
     if queries:
         for i, q in enumerate(queries, 1):
-            st.markdown(f"**{i}회차** &nbsp; `{q}`", unsafe_allow_html=True)
+            st.markdown(f"**Attempt {i}** &nbsp; `{q}`", unsafe_allow_html=True)
     else:
-        st.caption("쿼리 이력 없음")
+        st.caption("No query history.")
 
     st.markdown("---")
 
-    # ── 최종 답변 ─────────────────────────────────────────────────────────────
-    st.markdown("#### 최종 답변")
+    st.markdown("#### Final Answer")
     if final_answer:
         st.text_area(
             label="final_answer",
@@ -111,11 +105,11 @@ def render_detail(request_id: str) -> None:
             label_visibility="collapsed",
         )
     else:
-        st.caption("최종 답변이 아직 저장되지 않았습니다.")
+        st.caption("Final answer not yet saved.")
 
 
 def _render_escalation_summary(loops_df) -> None:
-    """루프 이력에서 에스컬레이션 원인을 자동으로 분석해 표시한다."""
+    """Automatically analyze escalation causes from loop history and display them."""
     msgs: list[str] = []
     for _, row in loops_df.iterrows():
         if not row.get("is_escalated"):
@@ -127,15 +121,15 @@ def _render_escalation_summary(loops_df) -> None:
         loop  = row["loop_number"]
 
         if tier == 0 and ar < 0.3:
-            msgs.append(f"Tier 0 · Loop {loop} — AR={ar:.3f} < 0.3 → 즉시 에스컬레이션")
+            msgs.append(f"Tier 0 · Loop {loop} — AR={ar:.3f} < 0.3 → immediate escalation")
         elif tier == 0:
-            msgs.append(f"Tier 0 · Loop {loop} — 최대 루프 소진 (F={f_val:.3f}) → Tier 1 이동")
+            msgs.append(f"Tier 0 · Loop {loop} — max loops exhausted (F={f_val:.3f}) → move to Tier 1")
         elif tier == 1:
-            msgs.append(f"Tier 1 → F={f_val:.3f} < 임계값 → Tier 2 이동")
+            msgs.append(f"Tier 1 → F={f_val:.3f} < threshold → move to Tier 2")
         elif tier == 2:
-            msgs.append(f"Tier 2 → F={f_val:.3f} 기준 미달 → Fallback")
+            msgs.append(f"Tier 2 → F={f_val:.3f} below threshold → Fallback")
 
     if msgs:
-        with st.expander("에스컬레이션 분석", expanded=True):
+        with st.expander("Escalation Analysis", expanded=True):
             for m in msgs:
                 st.markdown(f"- {m}")

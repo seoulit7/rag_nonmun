@@ -22,9 +22,9 @@
 - LLM을 이용한 사용자 수준(의료 전문가/일반인) 자동 분류
 - 3단계 지식 계층(Tier 0: VectorDB, Tier 1: LLM 학습데이터, Tier 2: 웹검색) 기반 검색
 - 사용자 수준별 맞춤 답변 생성 (Flesch-Kincaid Grade Level 목표 적용)
-- RAGAS 자동 품질 평가 및 Self-Corrective Loop (Ablation 5조건 A~E)
+- RAGAS 자동 품질 평가 및 Self-Corrective Loop (Proposal System vs Baseline)
 - 감사 로그 저장 (request_id당 N+1행: 평가마다 중간 행 + 최종 행, fk_grade 포함) 및 성능 시각화 대시보드 (7개 섹션)
-- STQS-108 표준 질문 세트를 이용한 5가지 Ablation Study 일괄 실험 (main.ipynb)
+- STQS-240 표준 질문 세트를 이용한 시스템 성능 평가 실험 (main.ipynb)
 
 ### 1.3 정의 및 약어
 
@@ -40,8 +40,8 @@
 | Self-Corrective Loop | RAGAS 기준 미달 시 쿼리를 재최적화하여 재검색하는 반복 루프 |
 | Tier | 지식 검색 계층. Tier 0(VectorDB) → Tier 1(LLM) → Tier 2(Web) |
 | tier_path | 에스컬레이션 경로 문자열. "0" / "0→1" / "0→1→2" |
-| Ablation Study | 시스템 구성 요소를 변경하여 각 요소의 기여도를 측정하는 실험 |
-| STQS-108 | Standard Test Query Set. 22개 질환 × 2-3 수준(P/C/+Tier) = 108개 표준 질문 |
+| Proposal System | 자가 교정 + 멀티 티어 + 수준 분류기를 모두 포함한 완성 시스템 (조건 A) |
+| STQS-240 | Standard Test Query Set. 표준 테스트 질문 세트 (240건) |
 | LangGraph | 상태 기반 LLM 워크플로우를 그래프 형태로 정의하는 프레임워크 |
 | FAISS | Facebook AI 유사도 검색 라이브러리. 벡터 인덱싱 및 검색에 사용 |
 | Professional (P) | 의료 전문가 사용자 수준 |
@@ -61,7 +61,7 @@
 
 ### 2.1 시스템 개요
 
-본 시스템은 MSD(Merck Sharp & Dohme) 매뉴얼 기반의 의료 정보를 활용하여 사용자 질문에 대한 신뢰성 있는 답변을 제공하는 한국어 의료 QA 시스템이다. LangGraph를 사용하여 Self-Corrective Loop를 구현하며, RAGAS 평가 기준(F ≥ 0.8, AR ≥ 0.8, CP ≥ 0.8)을 충족할 때까지 쿼리를 자동으로 개선한다. 5가지 Ablation Study 조건(A~E)을 통해 각 구성 요소의 기여도를 측정한다. 답변 생성 시 사용자 수준별 FK Grade 목표(Consumer ≤9, Professional ≥12)를 적용하여 가독성 적절성을 보장한다.
+본 시스템은 MSD(Merck Sharp & Dohme) 매뉴얼 기반의 의료 정보를 활용하여 사용자 질문에 대한 신뢰성 있는 답변을 제공하는 한국어 의료 QA 시스템이다. LangGraph를 사용하여 Self-Corrective Loop를 구현하며, RAGAS 평가 기준(F ≥ 0.8, AR ≥ 0.8, CP ≥ 0.8)을 충족할 때까지 쿼리를 자동으로 개선한다. 2가지 Ablation Study 조건(A/E)을 통해 시스템 성능을 비교한다. 답변 생성 시 사용자 수준별 FK Grade 목표(Consumer ≤9, Professional ≥12)를 적용하여 가독성 적절성을 보장한다.
 
 ### 2.2 시스템 컨텍스트
 
@@ -73,26 +73,26 @@
   │
   ▼
 [LangGraph 워크플로우]
-  ├─ 사용자 수준 분류 (LLM, 조건 D/E는 Consumer 고정)
+  ├─ 사용자 수준 분류 (LLM, 조건 E는 Consumer 고정)
   ├─ 쿼리 최적화 (LLM)
   ├─ Tier 0: FAISS VectorDB 검색 (BAAI/bge-base-en-v1.5)
   ├─ Tier 1: LLM 학습데이터 기반 생성 (AR만 평가)
   ├─ Tier 2: 웹검색 (DuckDuckGo)
   ├─ RAGAS 품질 평가 (F, AR, CP, Q_total)
   ├─ FK Grade 계산 (번역 전 영어 원문, is_final=TRUE 행만)
-  ├─ Ablation 조건별 자기교정 루프 (A~E)
+  ├─ A/E 조건별 자기교정 루프 (Proposal System / Baseline)
   └─ 감사 로그 저장 (N+1행: save_loop_log + save_audit_log)
   │
   ▼
-[Supabase PostgreSQL] — rag_audit_log (N+1행/요청, fk_grade 포함)
+[Oracle Database] — rag_audit_log (N+1행/요청, fk_grade 포함)
   │
   ▼
-[성능 대시보드 / Ablation Study 분석 — 7개 섹션]
+[성능 대시보드 — 7개 섹션 (Proposal System vs Baseline)]
 
 연구자
   │
   ▼
-[main.ipynb] — STQS-108 × 5조건 = 540건 자동 실험
+[main.ipynb] — STQS-240 × 2조건 = 480건 자동 실험
 ```
 
 ### 2.3 사용자 특성
@@ -102,14 +102,14 @@
 | 일반인 (Consumer) | 증상 설명, 복용 여부 등 일반적인 의료 정보를 요청하는 사용자 |
 | 의료 전문가 (Professional) | 임상 용어, 약물 기전, 진단 기준 등 전문적인 의료 정보를 요청하는 사용자 |
 | 시스템 관리자 | 인덱스 재빌드, 로그 조회, 성능 모니터링을 수행하는 사용자 |
-| 연구자 | Ablation Study 실험 실행, STQS-108 평가, 논문 데이터 수집을 수행하는 사용자 |
+| 연구자 | 시스템 성능 평가 실험 실행, STQS-240 평가, 논문 데이터 수집을 수행하는 사용자 |
 
 ### 2.4 제약 사항
 
 - 본 시스템은 MSD 매뉴얼에 수록된 질환에 한해 Tier 0 정보를 제공한다.
 - 실제 진단·처방·치료를 대체하지 않는다.
 - OpenAI API 또는 Google Gemini API 키가 필요하다.
-- Supabase PostgreSQL 연결이 없으면 감사 로그 저장 기능이 비활성화된다.
+- Oracle Database 연결이 없으면 감사 로그 저장 기능이 비활성화된다.
 - FAISS 인덱스는 BAAI/bge-base-en-v1.5로 빌드된 것과 동일한 모델로 쿼리해야 한다.
 - FK Grade는 영어 텍스트 기반 지표이므로 Tier 1(AR 단독 평가) 및 Fallback 행에는 적용되지 않는다.
 
@@ -128,7 +128,7 @@
 | **처리** | LLM이 질문을 분석하여 사용자 수준, 신뢰도(0~1), 분류 근거, 의도를 반환한다. |
 | **출력** | user_level (Professional / Consumer), 신뢰도, 의도 분류, 근거 텍스트 |
 | **예외 처리** | LLM 응답 파싱 실패 시 기본값 Consumer로 설정한다. |
-| **Ablation 예외** | 조건 D/E에서는 run_medical_self_corrective_rag()가 forced_user_level="Consumer"를 설정하므로 LLM 분류를 우회한다. |
+| **Baseline 예외** | 조건 E(Baseline)에서는 run_medical_self_corrective_rag()가 forced_user_level="Baseline"을 설정하므로 LLM 분류를 우회한다. |
 
 | 요구사항 ID | FR-002 |
 |-------------|--------|
@@ -223,30 +223,27 @@
 
 ---
 
-### 3.6 Ablation Study
+### 3.6 시스템 성능 비교
 
 | 요구사항 ID | FR-010 |
 |-------------|--------|
-| **요구사항명** | 5가지 Ablation Study 조건 지원 |
+| **요구사항명** | Proposal System vs Baseline 2가지 조건 지원 |
 | **우선순위** | 필수 (연구 목적) |
-| **설명** | 시스템은 ablation_condition 파라미터에 따라 서로 다른 라우팅 동작을 수행하여 각 구성 요소의 기여도를 측정할 수 있어야 한다. |
+| **설명** | 시스템은 ablation_condition 파라미터에 따라 Proposal System(A)과 Baseline(E) 두 가지 라우팅 동작을 수행하여 시스템 성능을 비교할 수 있어야 한다. |
 
 | 조건 | 이름 | 동작 |
 |------|------|------|
-| A | Full System | 자가 교정 + 멀티 티어 + 수준 분류기 (기본) |
-| B | No Self-Correction | Tier 0 첫 실패 즉시 Tier 1 에스컬레이션 |
-| C | No Multi-Tier | Tier 0 내 자가 교정만, 소진 시 Fallback |
-| D | No Level Classifier | A와 동일 라우팅, user_level="Consumer" 강제 |
-| E | Baseline | RAGAS 후 즉시 출력, user_level="Consumer" 강제 |
+| A | Proposal System | 자가 교정 + 멀티 티어 + 수준 분류기 (기본) |
+| E | Baseline | RAGAS 후 즉시 출력, user_level="Baseline" 강제 |
 
 | 요구사항 ID | FR-011 |
 |-------------|--------|
-| **요구사항명** | STQS-108 일괄 실험 (main.ipynb) |
+| **요구사항명** | STQS-240 일괄 실험 (main.ipynb) |
 | **우선순위** | 필수 (연구 목적) |
-| **설명** | main.ipynb는 STQS-108 표준 질문 세트(108건)와 5가지 조건(A~E)을 교차 실험하여 540건의 결과를 Supabase에 자동 저장해야 한다. |
-| **입력** | STQS-108 질문 목록 (22 질환 × 2-3 수준 = 108건), 각 질문의 disease, query_level_label, expected_tier |
-| **처리** | 5조건 × 108질문 = 540회 run_medical_self_corrective_rag() 호출 |
-| **출력** | rag_audit_log에 N+1행 × 540요청 INSERT (ablation_condition, query_index, disease 등 메타데이터 포함) |
+| **설명** | main.ipynb는 STQS-240 표준 질문 세트(240건)와 2가지 조건(A/E)을 교차 실험하여 결과를 Oracle DB에 자동 저장해야 한다. |
+| **입력** | STQS-240 질문 목록 (disease, level, q_num, question) 4-tuple, 각 질문의 query_index (1-240) |
+| **처리** | 2조건 × 240질문 = 480회 run_medical_self_corrective_rag() 호출 |
+| **출력** | rag_audit_log에 N+1행 × 480요청 INSERT (ablation_condition, query_index, disease 등 메타데이터 포함) |
 
 ---
 
@@ -310,7 +307,7 @@
 | **중간 행** | save_loop_log() 호출. is_final=FALSE, final_answer=NULL, fk_grade=NULL |
 | **최종 행 (output)** | save_audit_log(fk_grade=fk) 호출. is_final=TRUE, final_answer 포함, fk_grade 포함 |
 | **최종 행 (fallback)** | save_audit_log(is_fallback=True, fk_grade=None). is_final=TRUE, fk_grade=NULL |
-| **저장 항목** | request_id, loop_number, is_final, ablation_condition, query_index, disease, query_level_label, user_level, 원본/최적화 쿼리, expected_tier, final_tier, tier_path, is_escalated, is_fallback, self_correction_count, F/AR/CP/Q_total, hallucination_detected/count, retrieved_doc_count, llm_model, execution_time_ms, final_answer, **fk_grade** |
+| **저장 항목** | request_id, loop_number, is_final, ablation_condition, query_index, disease, query_level_label, user_level, 원본/최적화 쿼리, final_tier, tier_path, is_escalated, is_fallback, self_correction_count, F/AR/CP/Q_total, retrieved_doc_count, llm_model, execution_time_ms, final_answer (CLOB), **fk_grade** |
 | **제약** | UPDATE 없음. INSERT only. |
 
 | 요구사항 ID | FR-018 |
@@ -327,14 +324,14 @@
 |-------------|--------|
 | **요구사항명** | 성능 시각화 — 7개 섹션 |
 | **우선순위** | 선택 |
-| **설명** | 시스템은 rag_audit_log 데이터를 기반으로 Ablation Study 분석을 위한 7개 섹션의 시각화를 제공해야 한다. 모든 matplotlib 차트 텍스트는 영어로 작성한다 (배포 환경 폰트 제한). |
-| **섹션 1** | RAGAS 메트릭 비교: 조건별 F / AR / CP 평균 ± 95% CI 막대 차트 |
-| **섹션 2** | 환각 감소 효과: 조건별 환각 감지 비율 및 Baseline(E) 대비 감소율 |
-| **섹션 3** | 에스컬레이션 패턴: 조건 A Tier 분포 파이차트 + 막대차트 + **전문가/일반인/전체 쿼리 건수 표** |
-| **섹션 4** | 수준 분류기 성능: 조건 A/B/C 기준 Accuracy / Precision / Recall / F1 |
+| **설명** | 시스템은 rag_audit_log 데이터를 기반으로 Proposal System vs Baseline 성능 비교를 위한 7개 섹션의 시각화를 제공해야 한다. 모든 matplotlib 차트 텍스트는 영어로 작성한다 (배포 환경 폰트 제한). |
+| **섹션 1** | RAGAS 메트릭 비교: Proposal System / Baseline F / AR / CP 평균 ± 95% CI 막대 차트 |
+| **섹션 2** | 환각 감소 효과: 조건별 환각 감지 비율 및 Baseline 대비 감소율 |
+| **섹션 3** | 에스컬레이션 패턴: Proposal System Tier 분포 파이차트 + 막대차트 + **전문가/일반인/전체 쿼리 건수 표** |
+| **섹션 4** | 수준 분류기 성능: Proposal System 기준 Accuracy / Precision / Recall / F1 |
 | **섹션 4-b** | FK Grade 간접 검증: user_level별 박스플롯 + 조건별 평균 막대차트 + 목표 달성률 표 |
 | **섹션 5** | 자가 교정 루프 수렴: 루프 번호별 Mean Q_total + 95% CI + 수렴율 |
-| **섹션 6** | 구성 요소 기여도: Δk = Full(A) − Ablated 막대 차트 (ΔF / ΔAR / ΔCP / ΔQ) |
+| **섹션 6** | FK Grade 검증: Consumer/Professional 목표 달성률 시각화 |
 | **섹션 7** | 계산 효율성: 조건별 평균 처리 시간 (초, 95% CI) |
 
 ---
@@ -385,7 +382,7 @@
 | 요구사항 ID | NFR-005 |
 |-------------|---------|
 | **요구사항명** | API 키 보안 |
-| **설명** | OpenAI, Gemini API 키 및 Supabase DB URL은 .env 파일에만 저장하며 소스코드에 하드코딩하지 않는다. |
+| **설명** | OpenAI, Gemini API 키 및 Oracle DB 연결 정보는 .env 파일에만 저장하며 소스코드에 하드코딩하지 않는다. |
 
 ### 4.4 유지보수성 요구사항
 
@@ -416,7 +413,7 @@
 |-----------|------|------|
 | OpenAI API | REST API | GPT-4o 모델을 통한 답변 생성, 번역, 분류 |
 | Google Gemini API | REST API | Gemini 모델을 통한 답변 생성 (OpenAI 호환 API) |
-| Supabase PostgreSQL | psycopg2 직접 연결 | 감사 로그 저장 및 조회 (N+1행 INSERT only) |
+| Oracle Database | oracledb 직접 연결 | 감사 로그 저장 및 조회 (N+1행 INSERT only) |
 | DuckDuckGo Search | 라이브러리 | Tier 2 웹검색 |
 | HuggingFace | 모델 다운로드 | **BAAI/bge-base-en-v1.5** 임베딩 모델 (768차원) |
 
@@ -427,7 +424,7 @@
 | 메인 질의 화면 | 텍스트 입력, 실행 상태 표시, 점수 카드 (F/AR/CP/Q_total), 답변 출력, 로그 조회 |
 | 사이드바 | 사용자 페르소나 선택, LLM 백엔드 선택, 인덱스 재빌더, 대시보드 메뉴 |
 | 로그 조회 화면 | 감사 로그 목록 및 상세 조회 (tier_path, self_correction_count, fk_grade 포함) |
-| 성능 시각화 화면 | Ablation Study 7개 섹션 차트 및 요약 통계 카드 |
+| 성능 시각화 화면 | Proposal System vs Baseline 7개 섹션 차트 및 요약 통계 카드 |
 
 ---
 
@@ -437,12 +434,12 @@
 
 - **PDF 문서**: MSD 매뉴얼 질환별 PDF (소비자용/전문가용)
 - **사용자 질문**: 한국어 자연어 텍스트
-- **STQS-108**: 표준 테스트 질문 세트 (main.ipynb에 정의, 108건)
+- **STQS-240**: 표준 테스트 질문 세트 (main.ipynb에 정의, 240건, 40개 질환 × P3문항·C3문항)
 
 ### 6.2 저장 데이터
 
 - **FAISS 인덱스**: `db/msd_faiss.index/` (LangChain FAISS, BAAI/bge-base-en-v1.5 768차원)
-- **감사 로그**: Supabase PostgreSQL의 rag_audit_log 테이블 (request_id당 N+1행, fk_grade 포함)
+- **감사 로그**: Oracle DB의 rag_audit_log 테이블 (request_id당 N+1행, fk_grade 포함, final_answer CLOB)
 
 ### 6.3 출력 데이터
 
@@ -469,14 +466,14 @@
 | FK Grade (Consumer) | ≤ 9 | 일반인 가독성 목표 (NIH 건강 정보 이해도 기준) |
 | FK Grade (Professional) | ≥ 12 | 전문가 가독성 목표 (의학 저널 평균 수준) |
 
-### 7.2 연구 성과 지표 (STQS-108 기준)
+### 7.2 연구 성과 지표 (STQS-240 기준)
 
-| 지표 | 목표값 | 조건 A 달성값 | 비고 |
-|------|--------|-------------|------|
-| Faithfulness (F) | ≥ 0.85 | 측정 중 | STQS-108 Full System 결과 |
-| Answer Relevance (AR) | ≥ 0.80 | 측정 중 | STQS-108 Full System 결과 |
-| Context Precision (CP) | ≥ 0.78 | 측정 중 | STQS-108 Full System 결과 |
-| 할루시네이션 감소율 | ≥ 50% | 측정 중 | 조건 A vs 조건 E 비교 |
+| 지표 | 목표값 | Proposal System 달성값 | 비고 |
+|------|--------|----------------------|------|
+| Faithfulness (F) | ≥ 0.85 | 측정 중 | STQS-240 Proposal System 결과 |
+| Answer Relevance (AR) | ≥ 0.80 | 측정 중 | STQS-240 Proposal System 결과 |
+| Context Precision (CP) | ≥ 0.78 | 측정 중 | STQS-240 Proposal System 결과 |
+| 할루시네이션 감소율 | ≥ 50% | 측정 중 | Proposal System vs Baseline 비교 |
 | 사용자 수준 분류 정확도 | ≥ 90% | 측정 중 | Professional/Consumer 분류 |
 | FK Grade Consumer 목표 달성률 | ≥ 70% | 측정 중 | fk_grade ≤ 9 비율 |
 | FK Grade Professional 목표 달성률 | ≥ 70% | 측정 중 | fk_grade ≥ 12 비율 |

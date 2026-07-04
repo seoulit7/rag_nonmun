@@ -20,7 +20,6 @@ init = {
     "critic_score": 0.0,
     "answer_relevance_score": 0.0,
     "context_precision_score": 0.0,
-    "hallucination_flags": [],
     "critic_feedback": "",
     "search_tier": 0,
     "loop_count": 0,
@@ -36,7 +35,6 @@ init = {
     "query_index": 6,
     "disease": "관상동맥질환",
     "query_level_label": "C",
-    "expected_tier": 0,
 }
 st = {}
 english = ""

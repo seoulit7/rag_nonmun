@@ -11,5 +11,4 @@ def score_badge(score: float) -> str:
 
 
 def score_label(score: float) -> str:
-    """점수를 '양호'/'보통'/'미흡' 레이블로 변환한다."""
-    return "양호" if score >= 0.8 else ("보통" if score >= 0.6 else "미흡")
+    return "Good" if score >= 0.8 else ("Fair" if score >= 0.6 else "Poor")

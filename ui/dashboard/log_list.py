@@ -1,4 +1,4 @@
-"""로그 조회 — 목록 화면."""
+"""Log viewer — list screen."""
 from __future__ import annotations
 
 import math
@@ -8,7 +8,6 @@ import streamlit as st
 
 from ui.dashboard.log_query import PAGE_SIZE, fetch_logs
 
-# RAGAS 임계값 (색상 기준)
 _F_OK  = 0.8
 _AR_OK = 0.8
 _CP_OK = 0.8
@@ -21,28 +20,27 @@ def _score_color(val: float, threshold: float) -> str:
 
 
 def render_list() -> None:
-    """필터 패널 + 페이지네이션 + 테이블을 렌더링한다."""
-    st.subheader("로그 조회")
+    """Render the filter panel, pagination, and results table."""
+    st.subheader("Log Query")
 
-    # ── 필터 패널 ────────────────────────────────────────────────────────────
-    with st.expander("필터", expanded=True):
+    with st.expander("Filters", expanded=True):
         col1, col2, col3, col4 = st.columns([2, 2, 1.5, 1.5])
 
         with col1:
             today = date.today()
-            date_from = st.date_input("시작일", value=today - timedelta(days=7),
+            date_from = st.date_input("Start date", value=today - timedelta(days=7),
                                       key="lf_date_from")
-            date_to   = st.date_input("종료일", value=today, key="lf_date_to")
+            date_to   = st.date_input("End date", value=today, key="lf_date_to")
 
         with col2:
             user_levels = st.multiselect(
-                "사용자 수준",
+                "User Level",
                 ["Professional", "Consumer"],
                 default=[],
                 key="lf_levels",
             )
             tiers = st.multiselect(
-                "검색 Tier",
+                "Search Tier",
                 options=[0, 1, 2],
                 format_func=lambda x: {0: "0 · VectorDB", 1: "1 · LLM", 2: "2 · Web"}[x],
                 default=[],
@@ -51,22 +49,21 @@ def render_list() -> None:
 
         with col3:
             escalated_opt = st.selectbox(
-                "에스컬레이션", ["전체", "발생", "없음"], key="lf_escalated"
+                "Escalation", ["All", "Yes", "No"], key="lf_escalated"
             )
             fallback_opt = st.selectbox(
-                "Fallback", ["전체", "발생", "없음"], key="lf_fallback"
+                "Fallback", ["All", "Yes", "No"], key="lf_fallback"
             )
 
         with col4:
             f_range = st.slider(
-                "Faithfulness 범위",
+                "Faithfulness range",
                 0.0, 1.0, (0.0, 1.0), step=0.05, key="lf_f_range",
             )
-            keyword = st.text_input("키워드 (원본 질문)", key="lf_keyword")
+            keyword = st.text_input("Keyword (original query)", key="lf_keyword")
 
-        searched = st.button("조회", type="primary", width="content")
+        searched = st.button("Search", type="primary", width="content")
 
-    # 조회 버튼 또는 초기 진입 시 실행
     if searched or "log_df" not in st.session_state:
         st.session_state["log_page"] = 1
         _run_query(date_from, date_to, user_levels, tiers,
@@ -76,34 +73,31 @@ def render_list() -> None:
     total = st.session_state.get("log_total", 0)
 
     if df is None or df.empty:
-        st.info("조회 결과가 없습니다.")
+        st.info("No results found.")
         return
 
-    # ── 건수 + 페이지 정보 ────────────────────────────────────────────────────
     total_pages = max(1, math.ceil(total / PAGE_SIZE))
     page        = st.session_state.get("log_page", 1)
 
-    st.caption(f"총 **{total:,}건** | 페이지 {page} / {total_pages}")
+    st.caption(f"Total **{total:,}** records | Page {page} / {total_pages}")
 
-    # ── 테이블 ────────────────────────────────────────────────────────────────
     display_cols = {
-        "created_at":       "일시",
-        "request_id_short": "요청 ID",
-        "user_level":       "수준",
-        "original_query":   "원본 질문",
-        "tier_label":       "Tier",
-        "loop_number":      "Loop",
-        "ragas_f":          "F",
-        "ragas_ar":         "AR",
-        "ragas_cp":         "CP",
-        "is_escalated":     "에스컬",
-        "is_fallback":      "Fallback",
-        "execution_time_ms": "평가(ms)",
+        "created_at":        "Timestamp",
+        "request_id_short":  "Request ID",
+        "user_level":        "Level",
+        "original_query":    "Original Query",
+        "tier_label":        "Tier",
+        "loop_number":       "Loop",
+        "ragas_f":           "F",
+        "ragas_ar":          "AR",
+        "ragas_cp":          "CP",
+        "is_escalated":      "Escalated",
+        "is_fallback":       "Fallback",
+        "execution_time_ms": "Time (ms)",
     }
 
     view = df[list(display_cols.keys())].rename(columns=display_cols).copy()
-    # 원본 질문 truncate
-    view["원본 질문"] = view["원본 질문"].str[:35] + "..."
+    view["Original Query"] = view["Original Query"].str[:35] + "..."
 
     styled = (
         view.style
@@ -115,27 +109,25 @@ def render_list() -> None:
 
     st.dataframe(styled, width="stretch", hide_index=True)
 
-    # ── 행 선택 → 상세 이동 ──────────────────────────────────────────────────
     request_ids = df["request_id"].astype(str).tolist()
-    id_options  = ["— 선택 —"] + [
+    id_options  = ["— Select —"] + [
         f"{df.iloc[i]['created_at']}  |  {df.iloc[i]['original_query'][:30]}..."
         for i in range(len(df))
     ]
     selected_idx = st.selectbox(
-        "상세 보기 (행 선택)",
+        "View Detail (select row)",
         range(len(id_options)),
         format_func=lambda i: id_options[i],
         key="log_select_idx",
     )
-    if selected_idx > 0 and st.button("상세 보기", type="secondary"):
+    if selected_idx > 0 and st.button("View Detail", type="secondary"):
         st.session_state["log_selected_id"] = request_ids[selected_idx - 1]
         st.rerun()
 
-    # ── 페이지네이션 ──────────────────────────────────────────────────────────
     st.markdown("---")
     pcol1, pcol2, pcol3 = st.columns([1, 2, 1])
     with pcol1:
-        if page > 1 and st.button("◀ 이전", width="stretch"):
+        if page > 1 and st.button("◀ Previous", width="stretch"):
             st.session_state["log_page"] = page - 1
             _run_query(date_from, date_to, user_levels, tiers,
                        escalated_opt, fallback_opt, f_range, keyword)
@@ -146,21 +138,19 @@ def render_list() -> None:
             unsafe_allow_html=True,
         )
     with pcol3:
-        if page < total_pages and st.button("다음 ▶", width="stretch"):
+        if page < total_pages and st.button("Next ▶", width="stretch"):
             st.session_state["log_page"] = page + 1
             _run_query(date_from, date_to, user_levels, tiers,
                        escalated_opt, fallback_opt, f_range, keyword)
             st.rerun()
 
 
-# ── 내부 헬퍼 ─────────────────────────────────────────────────────────────────
-
 def _run_query(
     date_from, date_to, user_levels, tiers,
     escalated_opt, fallback_opt, f_range, keyword,
 ) -> None:
-    escalated = None if escalated_opt == "전체" else (escalated_opt == "발생")
-    fallback  = None if fallback_opt  == "전체" else (fallback_opt  == "발생")
+    escalated = None if escalated_opt == "All" else (escalated_opt == "Yes")
+    fallback  = None if fallback_opt  == "All" else (fallback_opt  == "Yes")
 
     df, total = fetch_logs(
         date_from=date_from,

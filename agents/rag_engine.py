@@ -56,6 +56,14 @@ These rules apply ONLY to sentence structure. They never justify omitting facts 
 
 Core principle: answer the question fully and faithfully FIRST — simplify ONLY the sentence structure, never the medical content."""
 
+# Tier 0 Baseline: 레벨 중립, 형식 제약 없음
+_SYSTEM_STRICT_BASELINE = """\
+You are a medical information assistant.
+Search the MSD Manual using the available tool once with the provided search query; only run a second search if the first results clearly lack any sentence related to the question.
+Answer using ONLY the retrieved context — do NOT add any information, facts, dosages, or mechanisms not directly found in the search results.
+If the retrieved context is insufficient, state: "The retrieved context does not contain sufficient information."
+Answer the question directly and completely in one to two paragraphs without any level-specific formatting constraints."""
+
 # Tier 2: 웹 검색 기반, 에이전트 자율성 허용
 _SYSTEM_WEB_PROFESSIONAL = """\
 You are a senior clinician and medical educator addressing a licensed healthcare professional.
@@ -93,6 +101,13 @@ These rules apply ONLY to sentence structure. They never justify omitting facts 
 - Use simple transition words: and, but, so, because, when, if, then.
 
 Core principle: answer the question fully and faithfully FIRST — simplify ONLY the sentence structure, never the medical content."""
+
+# Tier 2 Baseline: 레벨 중립 웹 검색
+_SYSTEM_WEB_BASELINE = """\
+You are a medical information assistant.
+Search the web for relevant medical information, then answer based on the retrieved results.
+Do NOT add or invent information beyond what the search results provide.
+Answer the question directly and completely without level-specific formatting constraints."""
 
 _LLM_KNOWLEDGE_PROMPT_PROFESSIONAL = ChatPromptTemplate.from_messages(
     [
@@ -212,9 +227,15 @@ def rag_engine(state: GraphState) -> GraphState:
     current_query = state["queries"][-1] if state["queries"] else state["question"]
     user_level = state["user_level"]
     is_pro = user_level == "Professional"
+    is_baseline = user_level == "Baseline"
 
     if tier == 0:
-        system = _SYSTEM_STRICT_PROFESSIONAL if is_pro else _SYSTEM_STRICT_CONSUMER
+        if is_baseline:
+            system = _SYSTEM_STRICT_BASELINE
+        elif is_pro:
+            system = _SYSTEM_STRICT_PROFESSIONAL
+        else:
+            system = _SYSTEM_STRICT_CONSUMER
         chunks, sources, answer = _run_agent(
             question=state["question"],
             query=current_query,
@@ -236,7 +257,12 @@ def rag_engine(state: GraphState) -> GraphState:
         answer = chunks[0] if chunks else ""
 
     else:
-        system = _SYSTEM_WEB_PROFESSIONAL if is_pro else _SYSTEM_WEB_CONSUMER
+        if is_baseline:
+            system = _SYSTEM_WEB_BASELINE
+        elif is_pro:
+            system = _SYSTEM_WEB_PROFESSIONAL
+        else:
+            system = _SYSTEM_WEB_CONSUMER
         chunks, sources, answer = _run_agent(
             question=state["question"],
             query=current_query,
@@ -254,8 +280,11 @@ def rag_engine(state: GraphState) -> GraphState:
     if not answer:
         answer = "\n\n".join(state["context"])
 
-    prefix = "Consumer" if user_level == "Consumer" else "Professional"
-    state["answer"] = f"[{prefix} Summary] {answer}"
+    if is_baseline:
+        state["answer"] = answer
+    else:
+        prefix = "Consumer" if user_level == "Consumer" else "Professional"
+        state["answer"] = f"[{prefix} Summary] {answer}"
     state["log"].append(f"[RAG] 검색 소스: {TIER_LABELS.get(tier, '알 수 없음')}")
 
     return state

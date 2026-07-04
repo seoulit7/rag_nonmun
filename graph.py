@@ -34,14 +34,11 @@ _NODE_TO_STEP = {
 def _critic_node(
     state: GraphState,
 ) -> Command[Literal["query_rewriter", "output", "fallback"]]:
-    """RAGAS 평가 후 Ablation 조건별 Self-Corrective Loop 라우팅.
+    """RAGAS 평가 후 Self-Corrective Loop 라우팅.
 
     조건별 동작:
-    - A (Full System)        : 기본 동작 (자가 교정 + 멀티 티어)
-    - B (No Self-Correction) : Tier 0 첫 실패 즉시 Tier 1 에스컬레이션
-    - C (No Multi-Tier)      : Tier 0 내 자가 교정만, 실패 시 fallback
-    - D (No Level Classifier): A와 동일한 라우팅 (수준 분류만 외부에서 고정)
-    - E (Baseline)           : 항상 즉시 output (첫 번째 답변 그대로)
+    - A (Proposal System): 기본 동작 (자가 교정 + 멀티 티어)
+    - E (Baseline)       : 항상 즉시 output (첫 번째 답변 그대로)
 
     루프 로그:
     - 매 평가 완료 후 무조건 save_loop_log() 호출 (is_final=False, goto 무관).
@@ -66,7 +63,7 @@ def _critic_node(
             new_state["best_answer"] = new_state["answer"]
             new_state["best_q_total"] = current_q
             new_state["log"].append(
-                f"[Loop] 최고 답변 갱신: Q_total={current_q:.3f} "
+                f"[Loop] Best answer updated: Q_total={current_q:.3f} "
                 f"(F={f:.2f}, AR={ar:.2f}, CP={cp:.2f})."
             )
 
@@ -75,7 +72,7 @@ def _critic_node(
     # ── 조건 E (Baseline): 평가 후 항상 즉시 output ──────────────────────────
     if condition == "E":
         new_state["log"].append(
-            f"[Loop] 조건 E (Baseline): 즉시 출력 "
+            f"[Loop] Condition E (Baseline): immediate output "
             f"(F={f:.2f}, AR={ar:.2f}, CP={cp:.2f})."
         )
         goto = "output"
@@ -84,7 +81,7 @@ def _critic_node(
     elif tier == 1:
         if ar >= settings.AR_THRESHOLD:
             new_state["log"].append(
-                f"[Loop] Tier 1 성공 (AR={ar:.2f} ≥ {settings.AR_THRESHOLD}) → output."
+                f"[Loop] Tier 1 passed (AR={ar:.2f} ≥ {settings.AR_THRESHOLD}) → output."
             )
             goto = "output"
         else:
@@ -92,93 +89,60 @@ def _critic_node(
             new_state["loop_count"]  = 0
             new_state["tier_path"]   = state.get("tier_path", "0→1") + "→2"
             new_state["log"].append(
-                f"[Loop] Tier 1 기준 미달 (AR={ar:.2f} < {settings.AR_THRESHOLD}) "
-                "→ Tier 2 에스컬레이션."
+                f"[Loop] Tier 1 below threshold (AR={ar:.2f} < {settings.AR_THRESHOLD}) "
+                "→ Tier 2 escalation."
             )
             goto = "query_rewriter"
 
     # ── 성공 조건: F ∧ AR ∧ CP 모두 충족 ────────────────────────────────────
     elif check_faithfulness(state):
         new_state["log"].append(
-            f"[Loop] 품질 기준 충족 "
+            f"[Loop] Quality threshold met "
             f"(F={f:.2f}, AR={ar:.2f}, CP={cp:.2f}) → output."
         )
         goto = "output"
 
-    # ── Tier 0 실패 라우팅 ───────────────────────────────────────────────────
+    # ── Tier 0 실패 라우팅 (Proposal System: 자가 교정 + 멀티 티어) ────────────
     elif tier == 0:
-
-        # 조건 B: 자가 교정 없음 — 첫 실패 즉시 Tier 1 에스컬레이션
-        if condition == "B":
+        if is_critically_low(state):
             new_state["search_tier"] = 1
             new_state["loop_count"]  = 0
             new_state["tier_path"]   = "0→1"
             new_state["log"].append(
-                f"[Loop] 조건 B (자가 교정 없음): "
-                f"Tier 0 첫 실패 (F={f:.2f}, AR={ar:.2f}) → Tier 1 에스컬레이션."
+                f"[Loop] RAGAS critically low "
+                f"(AR={ar:.2f}, F={f:.2f}, CP={cp:.2f}) → immediate Tier 1 escalation."
             )
             goto = "query_rewriter"
 
-        # 조건 C: 멀티 티어 없음 — Tier 0 내 자가 교정만, 소진 시 fallback
-        elif condition == "C":
-            if loop >= settings.MAX_LOOPS - 1:
-                new_state["log"].append(
-                    f"[Loop] 조건 C (멀티 티어 없음): "
-                    f"Tier 0 최대 재시도({settings.MAX_LOOPS}회) 소진 → fallback."
-                )
-                goto = "fallback"
-            else:
-                new_state["loop_count"]           = loop + 1
-                new_state["self_correction_count"] = (
-                    state.get("self_correction_count", 0) + 1
-                )
-                new_state["log"].append(
-                    f"[Loop] 조건 C: Tier 0 재시도 {loop + 1}/{settings.MAX_LOOPS} "
-                    f"(F={f:.2f}, AR={ar:.2f}, CP={cp:.2f})."
-                )
-                goto = "query_rewriter"
+        elif loop >= settings.MAX_LOOPS - 1:
+            new_state["search_tier"] = 1
+            new_state["loop_count"]  = 0
+            new_state["tier_path"]   = "0→1"
+            new_state["log"].append(
+                f"[Loop] Tier 0 max retries ({settings.MAX_LOOPS}) exhausted "
+                f"(F={f:.2f}, AR={ar:.2f}) → Tier 1 escalation."
+            )
+            goto = "query_rewriter"
 
-        # 조건 A / D: 기본 동작
         else:
-            if is_critically_low(state):
-                new_state["search_tier"] = 1
-                new_state["loop_count"]  = 0
-                new_state["tier_path"]   = "0→1"
-                new_state["log"].append(
-                    f"[Loop] RAGAS 지표 현저히 낮음 "
-                    f"(AR={ar:.2f}, F={f:.2f}, CP={cp:.2f}) → 즉시 Tier 1 에스컬레이션."
-                )
-                goto = "query_rewriter"
+            new_state["loop_count"]           = loop + 1
+            new_state["self_correction_count"] = (
+                state.get("self_correction_count", 0) + 1
+            )
+            reasons = []
+            if f  < settings.FAITHFULNESS_THRESHOLD: reasons.append(f"F={f:.2f}<{settings.FAITHFULNESS_THRESHOLD}")
+            if ar < settings.AR_THRESHOLD:            reasons.append(f"AR={ar:.2f}<{settings.AR_THRESHOLD}")
+            if cp < settings.CP_THRESHOLD:            reasons.append(f"CP={cp:.2f}<{settings.CP_THRESHOLD}")
+            new_state["log"].append(
+                f"[Loop] Tier 0 retry {loop + 1}/{settings.MAX_LOOPS} — "
+                f"{', '.join(reasons)} → query rewriting."
+            )
+            goto = "query_rewriter"
 
-            elif loop >= settings.MAX_LOOPS - 1:
-                new_state["search_tier"] = 1
-                new_state["loop_count"]  = 0
-                new_state["tier_path"]   = "0→1"
-                new_state["log"].append(
-                    f"[Loop] Tier 0 최대 재시도({settings.MAX_LOOPS}회) 소진 "
-                    f"(F={f:.2f}, AR={ar:.2f}) → Tier 1 에스컬레이션."
-                )
-                goto = "query_rewriter"
-
-            else:
-                new_state["loop_count"]           = loop + 1
-                new_state["self_correction_count"] = (
-                    state.get("self_correction_count", 0) + 1
-                )
-                reasons = []
-                if f  < settings.FAITHFULNESS_THRESHOLD: reasons.append(f"F={f:.2f}<{settings.FAITHFULNESS_THRESHOLD}")
-                if ar < settings.AR_THRESHOLD:            reasons.append(f"AR={ar:.2f}<{settings.AR_THRESHOLD}")
-                if cp < settings.CP_THRESHOLD:            reasons.append(f"CP={cp:.2f}<{settings.CP_THRESHOLD}")
-                new_state["log"].append(
-                    f"[Loop] Tier 0 재시도 {loop + 1}/{settings.MAX_LOOPS} — "
-                    f"{', '.join(reasons)} → query rewriting 재시도."
-                )
-                goto = "query_rewriter"
-
-    # ── Tier 2: 모든 Tier 소진 → fallback ───────────────────────────────────
+    # ── Tier 2: all tiers exhausted → fallback ───────────────────────────────
     else:
         new_state["log"].append(
-            f"[Loop] 모든 Tier 소진 (최종 F={f:.2f}, AR={ar:.2f}) → fallback."
+            f"[Loop] All tiers exhausted (final F={f:.2f}, AR={ar:.2f}) → fallback."
         )
         goto = "fallback"
 
@@ -214,24 +178,24 @@ def _fallback_node(state: GraphState) -> GraphState:
 
     if best_answer and best_q > 0:
         state["log"].append(
-            f"[Final] Fallback: 루프 내 최고 품질 답변 사용 "
-            f"(Q_total={best_q:.3f}, 최종 F={f:.2f})."
+            f"[Final] Fallback: using best answer from loop "
+            f"(Q_total={best_q:.3f}, final F={f:.2f})."
         )
         state["answer"] = best_answer
         _fk_fn = get_pure_fk_grade if state.get("user_level") == "Consumer" else flesch_kincaid_grade_en
         fk = _fk_fn(state["answer"])
     else:
         state["log"].append(
-            f"[Final] 모든 Tier 소진 (최종 F={f:.2f}) — "
-            "신뢰할 수 있는 근거를 찾지 못했습니다."
+            f"[Final] All tiers exhausted (final F={f:.2f}) — "
+            "no reliable source found."
         )
         raw_ctx = (
-            "\n\n---\n".join(state["context"]) if state["context"] else "(검색 결과 없음)"
+            "\n\n---\n".join(state["context"]) if state["context"] else "(no search results)"
         )
         state["answer"] = (
-            "신뢰할 수 있는 근거를 찾지 못했습니다. "
-            "아래는 검색된 원문 자료입니다. 직접 판단하시기 바랍니다.\n\n"
-            f"[참고 원문]\n{raw_ctx}"
+            "No reliable source could be found to answer this question. "
+            "The following are the raw retrieved passages for your reference.\n\n"
+            f"[Source Material]\n{raw_ctx}"
         )
         fk = None
 
@@ -281,7 +245,6 @@ def run_medical_self_corrective_rag(
     step_callback: Optional[Callable[[str, GraphState], None]] = None,
     llm_provider: str = "openai",
     ablation_condition: str = "",
-    expected_tier: int = -1,
     query_index: int = 0,
     disease: str = "",
     query_level_label: str = "",
@@ -293,8 +256,7 @@ def run_medical_self_corrective_rag(
         forced_user_level:  수준 강제 지정 ("Professional"/"Consumer"). None이면 자동 분류.
         step_callback:      노드 실행마다 호출되는 스트리밍 콜백.
         llm_provider:       "openai" 또는 "gemini"
-        ablation_condition: Ablation Study 조건 ("A"~"E"). ""=일반 운영(조건 A와 동일).
-        expected_tier:      STQS 예상 티어 (0/1/2). -1=일반 운영.
+        ablation_condition: 시스템 조건 ("A"=Proposal System, "E"=Baseline). ""=일반 운영.
         query_index:        STQS 질문 순번 (1부터). 0=일반 운영.
         disease:            질환명 (STQS 메타데이터).
         query_level_label:  STQS 정답 레이블 ("P"/"C"). ""=일반 운영.
@@ -308,8 +270,11 @@ def run_medical_self_corrective_rag(
 
     cond = (ablation_condition or "").strip().upper()
 
-    # 조건 D / E: 수준 분류기 없음 → Consumer 고정
-    if cond in ("D", "E") and not forced_user_level:
+    # 조건 E: 수준 분류 없음 → Baseline (레벨 중립 응답)
+    if cond == "E":
+        forced_user_level = "Baseline"
+    # 조건 D: 수준 분류기 없음 → Consumer 고정
+    elif cond == "D" and not forced_user_level:
         forced_user_level = "Consumer"
 
     initial_state: GraphState = {
@@ -325,7 +290,6 @@ def run_medical_self_corrective_rag(
         "critic_score":           0.0,
         "answer_relevance_score": 0.0,
         "context_precision_score": 0.0,
-        "hallucination_flags":    [],
         "critic_feedback":        "",
         # ── 티어 / 루프 ───────────────────────────────────────────────────────
         "search_tier":            0,
@@ -348,7 +312,6 @@ def run_medical_self_corrective_rag(
         "query_index":            query_index,
         "disease":                disease,
         "query_level_label":      query_level_label,
-        "expected_tier":          expected_tier,
     }
 
     try:

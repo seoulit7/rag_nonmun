@@ -7,7 +7,7 @@ from ui.utils import score_label
 
 def render_score_card(scores: Dict[str, float]) -> None:
     """제출 완료 후 RAGAS 최종 품질 지표 3-컬럼 카드를 렌더링한다."""
-    st.markdown("#### RAGAS 최종 품질 지표")
+    st.markdown("#### RAGAS Final Quality Scores")
     c1, c2, c3 = st.columns(3)
     c1.metric(
         "Faithfulness",
