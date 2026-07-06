@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Start-Process \"c:\\\\dev\\\\rag_ai\\\\rag_nonmun\\\\image\\\\pipeline_diagram_A4_HQ.png\")",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
+    ]
+  }
+}
