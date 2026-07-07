@@ -49,7 +49,11 @@ matplotlib.rcParams["axes.unicode_minus"] = False
 # ── Data Load ─────────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def _load_data() -> pd.DataFrame:
-    import oracledb
+    try:
+        import oracledb
+    except ModuleNotFoundError:
+        logger.warning("oracledb not installed — returning empty DataFrame")
+        return pd.DataFrame()
     import config.settings as s
 
     sql = """
@@ -214,7 +218,7 @@ def _plot_ragas_comparison(df):
         zorder=2,
     )
     ax.set_title(
-        "Table 6. RAGAS Metric Comparison — Proposal System (Tier 0, n=A) vs Baseline (matched query_index, Mean ± SEM)",
+        "Table 7. RAGAS Metric Comparison — Proposal System (Tier 0, n=A) vs Baseline (matched query_index, Mean ± SEM)",
         fontsize=12,
         fontweight="bold",
         pad=14,
@@ -377,7 +381,7 @@ def _plot_tier_distribution(df):
     ax2.grid(True, axis="y", alpha=0.4)
 
     fig.suptitle(
-        "Table 7. Tier Distribution — Escalation Pattern Analysis (Proposal System)",
+        "Table 8. Tier Distribution — Escalation Pattern Analysis (Proposal System)",
         fontsize=13,
         fontweight="bold",
         y=1.02,
@@ -549,7 +553,7 @@ def _plot_classifier(m):
         zorder=2,
     )
     ax.set_title(
-        "Table 8. Level Classifier Performance (Proposal System)",
+        "Table 9. Level Classifier Performance (Proposal System)",
         fontsize=13,
         fontweight="bold",
         pad=14,
@@ -636,7 +640,7 @@ def _plot_loop_convergence(df):
         label=f"τ_Q = {_THRESHOLD}",
     )
     ax.set_title(
-        "Table 9. Self-Correction Loop Convergence — Tier0 Q_total (Proposal System)",
+        "Table 10. Self-Correction Loop Convergence — Tier0 Q_total (Proposal System)",
         fontsize=13,
         fontweight="bold",
         pad=14,
@@ -792,7 +796,7 @@ def _plot_fk_grade(df):
     ax2.grid(True, axis="y", alpha=0.4)
 
     fig.suptitle(
-        "Table 10. FK Grade — Level Classifier Indirect Validation (is_final=1 only)",
+        "Table 11. FK Grade — Level Classifier Indirect Validation (is_final=1 only)",
         fontsize=13,
         fontweight="bold",
         y=1.02,
@@ -889,7 +893,7 @@ def _plot_efficiency(df):
         )
 
     ax.set_title(
-        "Table 11. Processing Time per Query — Proposal System vs Baseline",
+        "Table 12. Processing Time per Query — Proposal System vs Baseline",
         fontsize=13,
         fontweight="bold",
         pad=14,
@@ -961,7 +965,7 @@ def render_performance_viz() -> None:
     _render_summary_cards(df)
     st.markdown("---")
 
-    st.markdown("### Table 6. RAGAS Metric Comparison")
+    st.markdown("### Table 7. RAGAS Metric Comparison")
     st.caption(
         "**Fair subset comparison** — Proposal System: Tier 0 questions only (self-correction applied)  |  "
         "Baseline: same query_index counterparts only (matched set)  |  Mean ± SEM"
@@ -989,7 +993,7 @@ def render_performance_viz() -> None:
         st.info("scipy not available or insufficient data for t-test.")
     st.markdown("---")
 
-    st.markdown("### Table 7. Escalation Pattern Analysis (Tier Distribution — Proposal System)")
+    st.markdown("### Table 8. Escalation Pattern Analysis (Tier Distribution — Proposal System)")
     st.caption("Tier 0 → 1 → 2 distribution in the Proposal System condition")
     buf = _plot_tier_distribution(df)
     if buf:
@@ -1022,7 +1026,7 @@ def render_performance_viz() -> None:
         st.caption("No data — run Condition A batch experiment first, then click Refresh.")
     st.markdown("---")
 
-    st.markdown("### Table 8. Level Classifier Performance (Proposal System)")
+    st.markdown("### Table 9. Level Classifier Performance (Proposal System)")
     st.caption(
         "query_level_label (P/C) vs user_level — Accuracy / Precision / Recall / F1"
     )
@@ -1054,7 +1058,7 @@ def render_performance_viz() -> None:
         st.info("No classifier evaluation data. (query_level_label column required)")
     st.markdown("---")
 
-    st.markdown("### Table 9. Self-Correction Loop Convergence (Proposal System)")
+    st.markdown("### Table 10. Self-Correction Loop Convergence (Proposal System)")
     st.caption("Mean Q_total and convergence rate per loop iteration (τ_Q = 0.8)")
     buf = _plot_loop_convergence(df)
     if buf:
@@ -1066,7 +1070,7 @@ def render_performance_viz() -> None:
         st.info("No data for Condition A.")
     st.markdown("---")
 
-    st.markdown("### Table 10. FK Grade — Level Classifier Indirect Validation")
+    st.markdown("### Table 11. FK Grade — Level Classifier Indirect Validation")
     st.caption(
         "FK Grade computed on the English RAG answer  |  "
         "Consumer target ≤ 9  |  Professional target ≥ 12  |  is_final=1 only"
@@ -1081,7 +1085,7 @@ def render_performance_viz() -> None:
         st.dataframe(fk_tbl, hide_index=True, use_container_width=True)
     st.markdown("---")
 
-    st.markdown("### Table 11. Computational Efficiency (Processing Time)")
+    st.markdown("### Table 12. Computational Efficiency (Processing Time)")
     st.caption("Mean processing time per query by condition (sec, 95% CI)")
     buf = _plot_efficiency(df)
     if buf:
