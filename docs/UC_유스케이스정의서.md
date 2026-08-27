@@ -13,8 +13,9 @@
 |------|------|------|
 | **일반 사용자** | 주 액터 | 의료 정보를 질의하는 사용자. 일반인 또는 의료 전문가 |
 | **연구자 / 시스템 관리자** | 주 액터 | 인덱스 재빌드, 로그 조회, 성능 모니터링, 시스템 성능 평가 실험 수행 |
-| **OpenAI API** | 보조 액터 | 사용자 분류, 쿼리 최적화, 답변 생성, 번역 수행 |
-| **Gemini API** | 보조 액터 | OpenAI 대체 LLM 백엔드 |
+| **OpenAI API** | 보조 액터 | 사용자 분류, 쿼리 최적화, 답변 생성 수행 |
+| **Anthropic API** | 보조 액터 | RAGAS 판정(F/AR/CP) 수행. 답변 생성 LLM과 무관하게 항상 사용 (순환성 방지) |
+| **Google Gemini API** | 보조 액터 | TruLens RAG Triad 판정 수행 (성능평가 전용, `disease` 있는 요청만) |
 | **FAISS VectorDB** | 보조 액터 | 벡터 유사도 검색 수행 |
 | **Oracle DB** | 보조 액터 | 감사 로그 저장 및 조회 (N+1행 INSERT) |
 | **DuckDuckGo** | 보조 액터 | Tier 2 웹검색 수행 |
@@ -27,7 +28,7 @@
 |-------|-------------|------|---------|
 | UC-01 | 의료 정보 질의 | 일반 사용자 | 필수 |
 | UC-02 | 사용자 수준 수동 설정 | 일반 사용자 | 선택 |
-| UC-03 | LLM 백엔드 선택 | 일반 사용자 | 선택 |
+| UC-03 | LLM 백엔드 확인 | 일반 사용자 | 선택 |
 | UC-04 | PDF 문서 업로드 | 시스템 관리자 | 선택 |
 | UC-05 | 전체 인덱스 재빌드 | 시스템 관리자 | 선택 |
 | UC-06 | 감사 로그 조회 | 시스템 관리자 | 선택 |
@@ -59,13 +60,13 @@
 3. 시스템이 LLM으로 사용자 수준을 분류한다 (Professional / Consumer)
 4. 시스템이 질문을 영문 의료 검색 쿼리로 최적화한다
 5. 시스템이 FAISS VectorDB에서 관련 청크를 검색한다 (Tier 0)
-6. 시스템이 RAGAS로 Faithfulness, Answer Relevance, Context Precision을 평가한다
+6. 시스템이 RAGAS로 Faithfulness, Answer Relevance, Context Precision을 평가한다 (판정 LLM: Anthropic Claude, 답변 생성 LLM과 별도)
    → save_loop_log() : Oracle DB에 is_final=FALSE 중간 행 INSERT (eval_count=1)
 7. [F≥0.8 AND AR≥0.8 AND CP≥0.8] → 8단계로 진행
 8. 시스템이 사용자 수준별 FK Grade 목표를 적용하여 영문 답변을 생성한다
    (Consumer: ≤9, Professional: ≥12)
-9. output_node에서 번역 전 영어 원문으로 fk_grade를 계산한다
-10. output_agent가 한국어로 번역하고 출처·면책 조항을 추가한다
+9. output_node에서 출처·면책 조항 추가 전 영어 원문으로 fk_grade를 계산한다
+10. output_agent가 출처·면책 조항을 추가한다 (번역 없이 영어 원문 그대로 제공)
 11. save_audit_log(fk_grade=fk) : is_final=TRUE 최종 행 INSERT
 12. 화면에 점수 카드(F/AR/CP)와 최종 답변이 표시된다
 ```
@@ -141,28 +142,21 @@ E2-2. "질문을 입력해주세요" 경고 메시지를 표시하고 처리를 
 
 ---
 
-### UC-03: LLM 백엔드 선택
+### UC-03: LLM 백엔드 확인
 
 | 항목 | 내용 |
 |------|------|
 | **유스케이스 ID** | UC-03 |
-| **유스케이스명** | LLM 백엔드 선택 |
+| **유스케이스명** | LLM 백엔드 확인 |
 | **액터** | 일반 사용자 |
-| **목적** | OpenAI 또는 Gemini 중 사용할 LLM을 선택한다 |
+| **목적** | 사이드바에서 현재 사용 중인 LLM 백엔드(OpenAI)를 확인한다 |
 | **사전 조건** | 사이드바가 표시되어 있다 |
-| **사후 조건** | 선택된 LLM이 다음 질의에 사용된다 |
+| **사후 조건** | 표시된 LLM이 다음 질의에 사용된다 |
 
 **기본 흐름:**
 ```
-1. 사용자가 사이드바의 "LLM 백엔드" 라디오 버튼에서 선택한다
-2. "OpenAI" 선택 시 → GPT-4o 모델 사용
-3. "Gemini" 선택 시 → Gemini 2.5 Pro 모델 사용
-```
-
-**예외 흐름:**
-```
-E1. Gemini 선택 시 GEMINI_API_KEY가 설정되지 않은 경우
-E2. 경고 메시지 표시: "Gemini를 사용하려면 .env에 GEMINI_API_KEY를 설정하세요."
+1. 사이드바에 현재 LLM 백엔드(OpenAI)가 표시된다
+2. 모든 질의에 OpenAI GPT 모델이 사용된다
 ```
 
 ---
@@ -184,7 +178,7 @@ E2. 경고 메시지 표시: "Gemini를 사용하려면 .env에 GEMINI_API_KEY�
 2. PDF 파일을 선택하거나 드래그 앤 드롭한다
 3. 시스템이 PyMuPDF로 텍스트를 추출한다
 4. 스캔 PDF인 경우 RapidOCR로 텍스트를 인식한다
-5. 텍스트를 500자 청크(60자 오버랩)로 분할한다
+5. 텍스트를 1000자 청크(60자 오버랩)로 분할한다 (`.env`의 `MEDICAL_RAG_CHUNK_MAX_CHARS` 기준, 코드 기본값은 500자)
 6. BAAI/bge-base-en-v1.5 모델로 청크를 벡터화하여 FAISS 인덱스에 추가한다
 7. "N개 PDF 추가 완료" 메시지를 사이드바에 표시한다
 ```
@@ -342,7 +336,7 @@ E2. Supabase 연결 실패 시 로그에 오류 기록 후 계속 진행
                     │    └─ <<include>> 쿼리 최적화              │
                     │    └─ <<include>> Tier 0 VectorDB 검색   │
                     │    └─ <<include>> RAGAS 품질 평가         │
-                    │    └─ <<include>> FK Grade 계산 (번역 전) │
+                    │    └─ <<include>> FK Grade 계산 (조항추가 전) │
                     │    └─ <<extend>>  Self-Corrective Loop  │
                     │    └─ <<extend>>  즉시 에스컬레이션 (Tier 1)│
                     │    └─ <<extend>>  웹검색 에스컬레이션 (Tier 2)│
@@ -352,7 +346,7 @@ E2. Supabase 연결 실패 시 로그에 오류 기록 후 계속 진행
                     │  UC-02: 사용자 수준 수동 설정              │
                     │    └─ <<extend>> UC-01 (분류 생략)        │
                     │                                        │
-                    │  UC-03: LLM 백엔드 선택                  │
+                    │  UC-03: LLM 백엔드 확인                  │
                     │                                        │
   시스템 관리자 ───────►│  UC-04: PDF 문서 업로드                 │
                     │  UC-05: 전체 인덱스 재빌드                 │
@@ -378,7 +372,7 @@ E2. Supabase 연결 실패 시 로그에 오류 기록 후 계속 진행
 → RAGAS 평가: F=0.91, AR=0.88, CP=0.85 → Q_total=0.880
 → save_loop_log(): is_final=FALSE, loop_number=1
 → FK Grade 계산: flesch_kincaid_grade_en(영어 답변) → fk_grade=8.5 (≤9 목표 달성)
-→ output_agent: 한국어 번역
+→ output_agent: 출처·면책 조항 추가 (번역 없음)
 → save_audit_log(fk_grade=8.5): is_final=TRUE
 → 감사 로그: tier_path="0", self_correction_count=0, is_fallback=false, fk_grade=8.5
 ```

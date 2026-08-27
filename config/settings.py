@@ -90,6 +90,10 @@ def get_gemini_api_key() -> str:
     return _env("GEMINI_API_KEY", "")
 
 
+def get_anthropic_api_key() -> str:
+    return _env("ANTHROPIC_API_KEY", "")
+
+
 def get_openai_api_key() -> str:
     k = (os.environ.get("OPENAI_API_KEY") or "").strip()
     if k:
@@ -143,6 +147,9 @@ GEMINI_AUX_MODEL = _gemini_aux if _gemini_aux else "gemini-2.5-flash"
 OPENAI_MODEL = _env("OPENAI_MODEL", "gpt-4o")
 TRANSLATE_MODEL = _env("MEDICAL_RAG_TRANSLATE_MODEL", "gpt-4o-mini")
 RAGAS_LLM_MODEL = _env("MEDICAL_RAG_RAGAS_LLM_MODEL", "gpt-4o-mini")
+# RAGAS 평가(F/AR/CP) 전용 판정 LLM. 답변 생성 LLM(OpenAI/Gemini)과 분리해
+# 같은 모델이 채점까지 겸하는 순환성(circularity) 문제를 피한다.
+ANTHROPIC_MODEL = _env("ANTHROPIC_MODEL", "claude-sonnet-5")
 CLASSIFIER_LLM_MODEL = _env("MEDICAL_RAG_CLASSIFIER_MODEL", "gpt-4o")
 
 # Self-Correction Loop 제어

@@ -123,7 +123,7 @@ Q: "Hives can appear in response to physical triggers such as cold, heat, exerci
 
 **역할**: 사용자 질문을 MSD Manual 벡터 검색에 최적화된 영문 쿼리로 변환 (최초 호출 또는 Tier 에스컬레이션 후)
 
-**사용 모델**: `MEDICAL_RAG_CLASSIFIER_MODEL` 기반 rewriter 모델 (기본값: `gpt-4o-mini`)  
+**사용 모델**: `rewriter_model()` → OpenAI 사용 시 `MEDICAL_RAG_TRANSLATE_MODEL` 값 재사용 (기본값: `gpt-4o-mini`)  
 **Temperature**: `0.2` / **Max Tokens**: `1024`  
 **출력 형식**: `json_object`
 
@@ -250,7 +250,7 @@ Generate an improved query that addresses these failures.
 
 **역할**: MSD Manual 벡터 검색 기반 전문의 수준 답변 합성 (ReAct Agent)
 
-**사용 모델**: `rag_engine_model()` (기본값: `gpt-4.1`)  
+**사용 모델**: `rag_engine_model()` → OpenAI 사용 시 `OPENAI_MODEL` 값 (코드 기본값: `gpt-4o`, 현재 `.env`: `gpt-4o-mini`)  
 **Temperature**: `0.0` / **Max Tokens**: `3000`  
 **도구**: `search_msd_manual` (FAISS 벡터 검색)
 
@@ -481,7 +481,7 @@ Answer the question directly and completely without level-specific formatting co
 
 ## 12. Critic Agent — `agents/critic.py`
 
-LLM 시스템 프롬프트 없음. RAGAS 공식 프레임워크 (`infra/evaluator.py`)를 직접 호출하여 3중 지표를 산출합니다.
+LLM 시스템 프롬프트 없음. RAGAS 공식 프레임워크 (`infra/evaluator.py`)를 직접 호출하여 3중 지표를 산출합니다. **판정 LLM은 답변 생성 LLM(OpenAI/Gemini 토글)과 무관하게 항상 Claude**(`ANTHROPIC_MODEL`, 기본 `claude-haiku-4-5-20251001`)로 고정되어 있습니다 — 같은 모델이 생성과 채점을 겸할 때 생기는 순환성(circularity) 편향을 피하기 위함입니다.
 
 | 지표 | 내용 | 임계값 |
 |------|------|--------|
@@ -493,6 +493,8 @@ LLM 시스템 프롬프트 없음. RAGAS 공식 프레임워크 (`infra/evaluato
 - `AR < 0.3`: VectorDB에 관련 내용 자체가 없음
 - `F < 0.3 AND CP < 0.2`: 검색 자체가 완전히 빗나간 경우
 
+**성능평가 전용 지표 (LLM 프롬프트 없음, `disease` 있는 STQS/ablation 행만 계산)**: 위 3개 지표·임계값과 별개로, `compute_ir_metrics()`(문자열 매칭, LLM 불필요)와 `compute_trulens_triad()`(TruLens RAG Triad, 판정 LLM은 **Gemini** `GEMINI_AUX_MODEL`)를 호출해 `hit_rate_score`, `mrr_score`, `trulens_context_relevance`, `trulens_groundedness`, `trulens_answer_relevance`를 DB에 기록합니다. Self-Correction Loop 게이트에는 관여하지 않습니다.
+
 ---
 
 ## 13. Output Agent — `agents/output.py`
@@ -502,7 +504,7 @@ LLM 시스템 프롬프트 없음. 규칙 기반으로 답변에 출처와 면�
 | Tier | 출처 표기 | 면책 문구 |
 |------|-----------|-----------|
 | **Tier 0** | `Source: MSD Manual - {파일명} p.{페이지}` | MSD Manual 기반, 임상 결정 시 전문의 상담 권고 |
-| **Tier 1** | `Source: LLM training data (GPT/Gemini)` | LLM 학습 데이터 기반, 전문의 상담 권고 |
+| **Tier 1** | `Source: LLM training data (GPT)` | LLM 학습 데이터 기반, 전문의 상담 권고 |
 | **Tier 2** | `Source: Web Search - {출처}` | 공개 웹 검색 기반, 출처 신뢰성 확인 및 전문의 상담 권고 |
 
 ---

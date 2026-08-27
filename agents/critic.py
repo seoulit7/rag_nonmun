@@ -2,7 +2,11 @@ import re
 
 import config.settings as settings
 from models.state import GraphState
-from infra.evaluator import compute_official_ragas_scores
+from infra.evaluator import (
+    compute_official_ragas_scores,
+    compute_ir_metrics,
+    compute_trulens_triad,
+)
 
 
 _SUMMARY_PREFIX = re.compile(r"^\[(Consumer|Professional) Summary\]\s*", re.IGNORECASE)
@@ -47,6 +51,33 @@ def critic_agent(state: GraphState) -> GraphState:
         f"F={official.faithfulness:.3f}, AR={official.answer_relevance:.3f}, CP={official.context_precision:.3f}"
     )
     state["log"].append(f"[Critic] 피드백: {state['critic_feedback']}")
+
+    # 성능평가 전용 지표 (Self-Correction Loop 게이트와 무관, DB 기록·성능 시각화 전용).
+    # disease(STQS/ablation 정답 라벨)가 있는 요청에서만 계산한다:
+    # - IR 지표는 ground truth(disease)가 없는 일반 운영 쿼리에서는 애초에 계산 불가.
+    # - TruLens는 RAGAS와의 순환성 교차검증이 목적이라, 그 목적이 없는 일반 운영
+    #   쿼리에까지 추가 LLM 호출(비용·지연)을 들일 이유가 없다.
+    disease = state.get("disease") or ""
+    if disease:
+        ir = compute_ir_metrics(disease, state.get("context_sources", []))
+        state["hit_rate_score"] = ir.hit_rate
+        state["mrr_score"] = ir.mrr
+
+        trulens = compute_trulens_triad(eval_query, raw_answer, context_chunks)
+        state["trulens_context_relevance"] = trulens.context_relevance
+        state["trulens_groundedness"] = trulens.groundedness
+        state["trulens_answer_relevance"] = trulens.answer_relevance
+
+        state["log"].append(
+            f"[Critic] 성능평가 지표: Hit={ir.hit_rate} MRR={ir.mrr} | "
+            f"TruLens CR={trulens.context_relevance} GR={trulens.groundedness} AR={trulens.answer_relevance}"
+        )
+    else:
+        state["hit_rate_score"] = None
+        state["mrr_score"] = None
+        state["trulens_context_relevance"] = None
+        state["trulens_groundedness"] = None
+        state["trulens_answer_relevance"] = None
 
     return state
 

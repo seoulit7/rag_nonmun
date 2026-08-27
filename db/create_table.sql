@@ -1,7 +1,7 @@
 -- ============================================================
 -- rag_audit_log 테이블 생성 스크립트 (Oracle)
 -- 프로젝트: 의료 정보 자기교정 RAG 시스템
--- 버전: v5.1  (final_answer VARCHAR2→CLOB, query_index 범위 1-240)
+-- 버전: v5.2  (ir_hit_rate/ir_mrr, trulens_* 3종 컬럼 추가)
 -- ============================================================
 
 -- 기존 객체 안전 삭제
@@ -60,6 +60,13 @@ CREATE TABLE rag_audit_log (
 
     -- 가독성 지표 (is_final=1 & is_fallback=0 행만 기록)
     fk_grade                BINARY_DOUBLE,      -- Flesch-Kincaid Grade Level (영어 원문 기준)
+
+    -- 성능평가 전용 지표 (critic 루프 게이트와 무관, disease 라벨 있는 STQS 행만 기록)
+    ir_hit_rate              BINARY_DOUBLE,      -- 0 또는 1 (top-k 내 정답 문서 적중 여부)
+    ir_mrr                   BINARY_DOUBLE,      -- 0~1 (1/rank, 정답 문서 첫 등장 순위 역수)
+    trulens_context_relevance BINARY_DOUBLE,     -- TruLens RAG Triad — RAGAS CP 교차검증
+    trulens_groundedness      BINARY_DOUBLE,     -- TruLens RAG Triad — RAGAS F 교차검증
+    trulens_answer_relevance  BINARY_DOUBLE,     -- TruLens RAG Triad — RAGAS AR 교차검증
 
     CONSTRAINT pk_rag_audit_log PRIMARY KEY (log_id)
 );

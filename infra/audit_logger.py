@@ -40,7 +40,9 @@ _INSERT_SQL = """
         is_escalated, is_fallback, self_correction_count,
         ragas_f, ragas_ar, ragas_cp, q_total,
         retrieved_doc_count, llm_model, execution_time_ms,
-        final_answer, fk_grade
+        final_answer, fk_grade,
+        ir_hit_rate, ir_mrr,
+        trulens_context_relevance, trulens_groundedness, trulens_answer_relevance
     ) VALUES (
         :request_id, :loop_number, :is_final,
         :ablation_condition, :query_index, :disease,
@@ -50,7 +52,9 @@ _INSERT_SQL = """
         :is_escalated, :is_fallback, :self_correction_count,
         :ragas_f, :ragas_ar, :ragas_cp, :q_total,
         :retrieved_doc_count, :llm_model, :execution_time_ms,
-        :final_answer, :fk_grade
+        :final_answer, :fk_grade,
+        :ir_hit_rate, :ir_mrr,
+        :trulens_context_relevance, :trulens_groundedness, :trulens_answer_relevance
     )
 """
 
@@ -151,6 +155,11 @@ def _build_row(
         "execution_time_ms":     execution_time_ms,
         "final_answer":          final_answer,
         "fk_grade":              fk_grade,
+        "ir_hit_rate":               state.get("hit_rate_score"),
+        "ir_mrr":                    state.get("mrr_score"),
+        "trulens_context_relevance": state.get("trulens_context_relevance"),
+        "trulens_groundedness":      state.get("trulens_groundedness"),
+        "trulens_answer_relevance":  state.get("trulens_answer_relevance"),
     }
 
 

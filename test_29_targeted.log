@@ -1,0 +1,1168 @@
+======================================================================
+  [타겟 테스트] 29개 질문 파이프라인 실행 (DB 저장 없음)
+======================================================================
+  q 26 [P] COPD  According to the MSD Manual, in emphysema the small airways ...
+  q 34 [C] Alzheimer Disease  According to the MSD Manual, early in Alzheimer disease, spe...
+  q 38 [P] Major Depressive Disorder  According to the MSD Manual, depression becomes a disorder o...
+  q 41 [C] Major Depressive Disorder  According to the MSD Manual, normal feelings of grief and di...
+  q 43 [P] Asthma  According to the MSD Manual, during an asthma attack excessi...
+  q 44 [P] Asthma  According to the MSD Manual, after an asthma attack ends the...
+  q 46 [C] Asthma  According to the MSD Manual, spirometry tests are used in th...
+  q 48 [C] Asthma  According to the MSD Manual, diagnosing asthma in older adul...
+  q 56 [P] Chronic Kidney Disease  According to the MSD Manual, chronic kidney disease is initi...
+  q 58 [C] Chronic Kidney Disease  According to the MSD Manual, the anemia of chronic kidney di...
+  q 59 [C] Chronic Kidney Disease  According to the MSD Manual, chronic kidney disease is defin...
+  q 60 [C] Chronic Kidney Disease  According to the MSD Manual, fluid intake may need to be res...
+  q 77 [C] Anemia  According to the MSD Manual, restless leg syndrome is listed...
+  q 97 [P] Colorectal Cancer  According to the MSD Manual, the right colon has a large cal...
+  q 98 [P] Colorectal Cancer  According to the MSD Manual, colonoscopy is the preferred di...
+  q 99 [P] Colorectal Cancer  According to the MSD Manual, barium enema x-rays can detect ...
+  q117 [P] Ankylosing Spondylitis  According to the MSD Manual, treatment of ankylosing spondyl...
+  q141 [P] Cholelithiasis  According to the MSD Manual, abdominal ultrasound is used to...
+  q145 [P] Chronic Pancreatitis  According to the MSD Manual, when pancreatic insufficiency d...
+  q158 [P] HIV Infection  According to the MSD Manual, some people with HIV infection ...
+  q163 [P] Irritable Bowel Syndrome  According to the MSD Manual, IBS flare-ups have a characteri...
+  q179 [C] Lung Cancer  According to the MSD Manual, lung cancer can spread through ...
+  q188 [P] Pelvic Inflammatory Disease  According to the MSD Manual, pelvic inflammatory disease pro...
+  q211 [P] Urticaria  According to the MSD Manual, hives may occur together with a...
+  q222 [C] Uterine Fibroid  According to the MSD Manual, after myomectomy to remove uter...
+  q228 [C] Dyslipidemia  According to the MSD Manual, doctors usually perform blood t...
+  q232 [C] Heart Failure  According to the MSD Manual, the term systole refers to when...
+  q234 [C] Heart Failure  According to the MSD Manual, salt and water retention in hea...
+  q239 [C] Varicose Veins  According to the MSD Manual, varicose veins can be removed b...
+
+C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\langgraph\cache\base\__init__.py:8: LangChainPendingDeprecationWarning: The default value of `allowed_objects` will change in a future version. Pass an explicit value (e.g., allowed_objects='messages' or allowed_objects='core') to suppress this warning.
+  from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+[RAGAS] scores F=1.000 AR=0.689 CP=1.000 | q='What happens to bronchioles during exhalation in emphysema d' | ar_q='What happens to bronchioles during exhalation in emphysema d' | a='According to the MSD Manual, in emphysema, the destruction o' | ctx=3
+[RAGAS] scores F=1.000 AR=0.689 CP=1.000 | q='How does alveolar wall destruction in emphysema affect bronc' | ar_q='What happens to bronchioles during exhalation in emphysema d' | a='According to the MSD Manual, in emphysema the destruction of' | ctx=3
+[RAGAS] scores F=1.000 AR=0.689 CP=1.000 | q='What physiological changes occur in bronchioles during expir' | ar_q='What happens to bronchioles during exhalation in emphysema d' | a='According to the MSD Manual, in emphysema, the destruction o' | ctx=3
+[RAGAS] scores F=1.000 AR=0.633 CP=1.000 | q='emphysema bronchioles exhalation alveolar wall destruction m' | ar_q='What happens to bronchioles during exhalation in emphysema d' | a='**Pathophysiology**  \nEmphysema, a principal subtype of chro' | ctx=1
+[RAGAS] scores F=0.000 AR=0.661 CP=0.000 | q='emphysema bronchioles exhalation alveolar wall attachment de' | ar_q='What happens to bronchioles during exhalation in emphysema d' | a='Pathophysiology:\nIn the context of pulmonary emphysema, the ' | ctx=1
+  [ 1/29] [FAIL] q 26 [P] Tier 2  path=0→1→2  184s  COPD
+[RAGAS] scores F=1.000 AR=0.850 CP=1.000 | q='early Alzheimer disease speech patterns word usage' | ar_q='early Alzheimer disease speech patterns word usage' | a='Early in Alzheimer disease, people may use simpler words or ' | ctx=3
+  [ 2/29] [PASS] q 34 [C] Tier 0  path=0  20s  Alzheimer Disease
+[RAGAS] scores F=1.000 AR=0.715 CP=0.500 | q='criteria for diagnosing major depressive disorder according ' | ar_q='criteria for diagnosing major depressive disorder according ' | a='To differentiate depressive disorders from ordinary mood var' | ctx=3
+[RAGAS] scores F=0.500 AR=0.715 CP=0.333 | q='diagnostic criteria for major depressive disorder in clinica' | ar_q='criteria for diagnosing major depressive disorder according ' | a='To differentiate depressive disorders from ordinary mood var' | ctx=3
+Task exception was never retrieved
+future: <Task finished name='Task-75' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-76' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-77' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-78' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-79' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-80' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-81' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-82' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+[RAGAS] scores F=0.333 AR=0.872 CP=0.333 | q='What specific diagnostic thresholds and criteria does the MS' | ar_q='criteria for diagnosing major depressive disorder according ' | a='To differentiate depressive disorders from ordinary mood var' | ctx=3
+[RAGAS] scores F=1.000 AR=0.789 CP=1.000 | q='criteria for diagnosing major depressive disorder according ' | ar_q='criteria for diagnosing major depressive disorder according ' | a='**Pathophysiology**\n\nMajor depressive disorder (MDD) is char' | ctx=1
+[RAGAS] scores F=0.000 AR=0.792 CP=0.000 | q='criteria for diagnosing major depressive disorder according ' | ar_q='criteria for diagnosing major depressive disorder according ' | a='Pathophysiology:\nMajor depressive disorder (MDD) is characte' | ctx=1
+  [ 3/29] [FAIL] q 38 [P] Tier 2  path=0→1→2  167s  Major Depressive Disorder
+[RAGAS] scores F=1.000 AR=0.896 CP=1.000 | q='What does the MSD Manual say about how normal feelings of gr' | ar_q='What does the MSD Manual say about how normal feelings of gr' | a='Normal feelings of grief and disappointment are temporary an' | ctx=3
+  [ 4/29] [PASS] q 41 [C] Tier 0  path=0  31s  Major Depressive Disorder
+[RAGAS] scores F=1.000 AR=0.767 CP=1.000 | q='asthma attack mucus production airway segments effects sever' | ar_q='asthma attack mucus production airway segments effects sever' | a='According to the MSD Manual, during an asthma attack, excess' | ctx=3
+[RAGAS] scores F=0.600 AR=0.776 CP=1.000 | q='What specific alterations occur in mucus properties in diffe' | ar_q='asthma attack mucus production airway segments effects sever' | a='During an asthma attack, the MSD Manual states that excessiv' | ctx=3
+[RAGAS] scores F=1.000 AR=0.776 CP=0.500 | q='What are the specific characteristics of mucus in the airway' | ar_q='asthma attack mucus production airway segments effects sever' | a='During an asthma attack, the MSD Manual states that excessiv' | ctx=3
+[RAGAS] scores F=1.000 AR=0.768 CP=1.000 | q='asthma attack mucus production airway segments effects sever' | ar_q='asthma attack mucus production airway segments effects sever' | a='Certainly. Below is a detailed, evidence-based discussion of' | ctx=1
+[RAGAS] scores F=0.067 AR=0.751 CP=0.000 | q='asthma attack mucus production airway segments effects sever' | ar_q='asthma attack mucus production airway segments effects sever' | a='I am currently unable to access the web directly for the lat' | ctx=1
+  [ 5/29] [FAIL] q 43 [P] Tier 2  path=0→1→2  177s  Asthma
+[RAGAS] scores F=1.000 AR=0.000 CP=0.000 | q='asthma attack resolution airway inflammation changes post-br' | ar_q='asthma attack resolution airway inflammation changes post-br' | a='The retrieved context does not contain sufficient informatio' | ctx=3
+[RAGAS] scores F=1.000 AR=0.721 CP=1.000 | q='asthma attack resolution airway inflammation changes post-br' | ar_q='asthma attack resolution airway inflammation changes post-br' | a='**Pathophysiology**\n\nDuring an acute asthma exacerbation, th' | ctx=1
+[RAGAS] scores F=0.000 AR=0.802 CP=0.000 | q='asthma attack resolution airway inflammation changes post-br' | ar_q='asthma attack resolution airway inflammation changes post-br' | a='Certainly. Based on established pathophysiological principle' | ctx=2
+  [ 6/29] [FAIL] q 44 [P] Tier 2  path=0→1→2  99s  Asthma
+[RAGAS] scores F=1.000 AR=0.825 CP=0.833 | q='What do spirometry tests measure in asthma diagnosis and whe' | ar_q='What do spirometry tests measure in asthma diagnosis and whe' | a='Spirometry tests in asthma diagnosis measure the amount of a' | ctx=3
+  [ 7/29] [PASS] q 46 [C] Tier 0  path=0  33s  Asthma
+[RAGAS] scores F=0.818 AR=0.812 CP=1.000 | q='What lung diseases are commonly associated with asthma in ol' | ar_q='What lung diseases are commonly associated with asthma in ol' | a='Diagnosing asthma in older adults is challenging because the' | ctx=3
+  [ 8/29] [PASS] q 48 [C] Tier 0  path=0  32s  Asthma
+[RAGAS] scores F=1.000 AR=0.856 CP=0.333 | q='initial stages of chronic kidney disease terminology and ren' | ar_q='initial stages of chronic kidney disease terminology and ren' | a='According to the MSD Manual, chronic kidney disease is initi' | ctx=3
+[RAGAS] scores F=1.000 AR=0.852 CP=0.333 | q='What terminology does the MSD Manual use to classify early c' | ar_q='initial stages of chronic kidney disease terminology and ren' | a='According to the MSD Manual, chronic kidney disease is initi' | ctx=3
+[RAGAS] scores F=1.000 AR=0.878 CP=0.500 | q='What clinical classifications does the MSD Manual use for ea' | ar_q='initial stages of chronic kidney disease terminology and ren' | a='According to the MSD Manual, chronic kidney disease is initi' | ctx=3
+[RAGAS] scores F=1.000 AR=0.803 CP=1.000 | q='initial stages of chronic kidney disease terminology and ren' | ar_q='initial stages of chronic kidney disease terminology and ren' | a='Certainly. Below is a detailed, graduate-level discussion of' | ctx=1
+  [ 9/29] [FAIL] q 56 [P] Tier 1  path=0→1  118s  Chronic Kidney Disease
+[RAGAS] scores F=1.000 AR=0.938 CP=1.000 | q='typical hematocrit range for anemia of chronic kidney diseas' | ar_q='typical hematocrit range for anemia of chronic kidney diseas' | a='The anemia of chronic kidney disease is normochromic-normocy' | ctx=3
+  [10/29] [PASS] q 58 [C] Tier 0  path=0  22s  Chronic Kidney Disease
+[RAGAS] scores F=0.000 AR=0.821 CP=0.000 | q='What is the time frame for the progression of chronic kidney' | ar_q='What is the time frame for the progression of chronic kidney' | a='Chronic kidney disease is defined as a slowly progressive de' | ctx=3
+[RAGAS] scores F=1.000 AR=0.849 CP=1.000 | q='What is the time frame for the progression of chronic kidney' | ar_q='What is the time frame for the progression of chronic kidney' | a='Chronic kidney disease usually progresses over months to yea' | ctx=1
+  [11/29] [FAIL] q 59 [C] Tier 1  path=0→1  51s  Chronic Kidney Disease
+[RAGAS] scores F=0.750 AR=0.840 CP=1.000 | q='chronic kidney disease fluid intake restriction reason blood' | ar_q='chronic kidney disease fluid intake restriction reason blood' | a='Fluid intake may need to be restricted in chronic kidney dis' | ctx=3
+[RAGAS] scores F=0.900 AR=0.840 CP=0.833 | q='What are the reasons for fluid restriction in chronic kidney' | ar_q='chronic kidney disease fluid intake restriction reason blood' | a='Fluid intake may need to be restricted in chronic kidney dis' | ctx=3
+  [12/29] [PASS] q 60 [C] Tier 0  path=0  65s  Chronic Kidney Disease
+[RAGAS] scores F=1.000 AR=0.727 CP=1.000 | q='What does the MSD Manual say about the symptoms of restless ' | ar_q='What does the MSD Manual say about the symptoms of restless ' | a='Restless leg syndrome causes an unpleasant urge to move the ' | ctx=3
+[RAGAS] scores F=1.000 AR=0.727 CP=1.000 | q='What does the MSD Manual describe about the manifestations o' | ar_q='What does the MSD Manual say about the symptoms of restless ' | a='Restless leg syndrome causes an unpleasant urge to move the ' | ctx=3
+[RAGAS] scores F=1.000 AR=0.832 CP=0.500 | q='What complications or symptoms does the MSD Manual associate' | ar_q='What does the MSD Manual say about the symptoms of restless ' | a='Restless leg syndrome causes an unpleasant urge to move the ' | ctx=3
+[RAGAS] scores F=1.000 AR=0.926 CP=1.000 | q='What does the MSD Manual say about the symptoms of restless ' | ar_q='What does the MSD Manual say about the symptoms of restless ' | a='The MSD Manual states that restless leg syndrome symptoms wo' | ctx=1
+  [13/29] [FAIL] q 77 [C] Tier 1  path=0→1  103s  Anemia
+[RAGAS] scores F=1.000 AR=0.852 CP=1.000 | q='right colon tumors anatomical characteristics obstruction bl' | ar_q='right colon tumors anatomical characteristics obstruction bl' | a='According to the MSD Manual, the right colon has a large cal' | ctx=3
+  [14/29] [PASS] q 97 [P] Tier 0  path=0  14s  Colorectal Cancer
+[RAGAS] scores F=1.000 AR=0.806 CP=0.833 | q='management of polyps and abnormalities detected during colon' | ar_q='management of polyps and abnormalities detected during colon' | a='According to the MSD Manual, any growths or abnormalities se' | ctx=3
+  [15/29] [PASS] q 98 [P] Tier 0  path=0  32s  Colorectal Cancer
+[RAGAS] scores F=1.000 AR=0.762 CP=1.000 | q='barium enema x-rays tumor detection large intestine site adv' | ar_q='barium enema x-rays tumor detection large intestine site adv' | a='According to the MSD Manual, barium enema x-rays may be take' | ctx=3
+[RAGAS] scores F=1.000 AR=0.893 CP=0.833 | q='What sections of the colon are evaluated by barium enema ima' | ar_q='barium enema x-rays tumor detection large intestine site adv' | a='According to the MSD Manual, barium enema x-rays may be take' | ctx=3
+  [16/29] [PASS] q 99 [P] Tier 0  path=0  64s  Colorectal Cancer
+[RAGAS] scores F=1.000 AR=0.867 CP=1.000 | q='ankylosing spondylitis treatment biological agents targeted ' | ar_q='ankylosing spondylitis treatment biological agents targeted ' | a='The MSD Manual lists tumor necrosis factor (TNF) inhibitors,' | ctx=3
+  [17/29] [PASS] q117 [P] Tier 0  path=0  14s  Ankylosing Spondylitis
+[RAGAS] scores F=1.000 AR=0.922 CP=1.000 | q='sensitivity and specificity of abdominal ultrasound for gall' | ar_q='sensitivity and specificity of abdominal ultrasound for gall' | a='According to the MSD Manual, abdominal ultrasound is 95% sen' | ctx=3
+  [18/29] [PASS] q141 [P] Tier 0  path=0  30s  Cholelithiasis
+[RAGAS] scores F=1.000 AR=0.956 CP=0.833 | q='characteristics of stool in pancreatic insufficiency due to ' | ar_q='characteristics of stool in pancreatic insufficiency due to ' | a='When pancreatic insufficiency develops in chronic pancreatit' | ctx=3
+  [19/29] [PASS] q145 [P] Tier 0  path=0  20s  Chronic Pancreatitis
+[RAGAS] scores F=0.909 AR=0.872 CP=0.333 | q='temporary interruption of antiretroviral therapy HIV MSD Man' | ar_q='temporary interruption of antiretroviral therapy HIV MSD Man' | a='The MSD Manual refers to the practice of temporarily stoppin' | ctx=3
+[RAGAS] scores F=0.400 AR=0.870 CP=0.500 | q='What terminology does the MSD Manual use for the practice of' | ar_q='temporary interruption of antiretroviral therapy HIV MSD Man' | a='The MSD Manual refers to the practice of temporarily stoppin' | ctx=3
+[RAGAS] scores F=1.000 AR=0.854 CP=1.000 | q='What is the term used by the MSD Manual for the practice of ' | ar_q='temporary interruption of antiretroviral therapy HIV MSD Man' | a='The MSD Manual refers to the practice of temporarily stoppin' | ctx=3
+  [20/29] [PASS] q158 [P] Tier 0  path=0  97s  HIV Infection
+[RAGAS] scores F=1.000 AR=0.798 CP=0.500 | q='Irritable Bowel Syndrome flare-ups sleep-wake cycle relation' | ar_q='Irritable Bowel Syndrome flare-ups sleep-wake cycle relation' | a='According to the MSD Manual, flare-ups of irritable bowel sy' | ctx=3
+[RAGAS] scores F=1.000 AR=0.793 CP=0.833 | q='Irritable Bowel Syndrome flare-ups timing in relation to cir' | ar_q='Irritable Bowel Syndrome flare-ups sleep-wake cycle relation' | a='According to the MSD Manual, IBS flare-ups almost always occ' | ctx=3
+[RAGAS] scores F=1.000 AR=0.716 CP=1.000 | q='Irritable Bowel Syndrome flare-up patterns in relation to sl' | ar_q='Irritable Bowel Syndrome flare-ups sleep-wake cycle relation' | a='According to the MSD Manual, flare-ups of irritable bowel sy' | ctx=3
+[RAGAS] scores F=1.000 AR=0.812 CP=1.000 | q='Irritable Bowel Syndrome flare-ups sleep-wake cycle relation' | ar_q='Irritable Bowel Syndrome flare-ups sleep-wake cycle relation' | a='**Pathophysiology**\n\nIrritable Bowel Syndrome (IBS) is a fun' | ctx=1
+  [21/29] [FAIL] q163 [P] Tier 1  path=0→1  123s  Irritable Bowel Syndrome
+[RAGAS] scores F=0.545 AR=0.789 CP=1.000 | q='organs where lung cancer spreads through the bloodstream' | ar_q='organs where lung cancer spreads through the bloodstream' | a='Lung cancer most commonly spreads through the bloodstream to' | ctx=3
+[RAGAS] scores F=1.000 AR=0.000 CP=0.000 | q='common metastatic sites for lung cancer via hematogenous spr' | ar_q='organs where lung cancer spreads through the bloodstream' | a='The retrieved context does not contain sufficient informatio' | ctx=3
+[RAGAS] scores F=1.000 AR=0.822 CP=1.000 | q='organs where lung cancer spreads through the bloodstream' | ar_q='organs where lung cancer spreads through the bloodstream' | a='Lung cancer spreads through the bloodstream to organs such a' | ctx=1
+  [22/29] [FAIL] q179 [C] Tier 1  path=0→1  100s  Lung Cancer
+[RAGAS] scores F=0.857 AR=0.000 CP=0.000 | q='Pelvic inflammatory disease adhesions locations complication' | ar_q='Pelvic inflammatory disease adhesions locations complication' | a='The retrieved context from the MSD Manual states that pelvic' | ctx=3
+[RAGAS] scores F=1.000 AR=0.770 CP=1.000 | q='Pelvic inflammatory disease adhesions locations complication' | ar_q='Pelvic inflammatory disease adhesions locations complication' | a='**Pathophysiology**\n\nPelvic inflammatory disease (PID) repre' | ctx=1
+[RAGAS] scores F=0.000 AR=0.760 CP=0.000 | q='Pelvic inflammatory disease adhesions locations and complica' | ar_q='Pelvic inflammatory disease adhesions locations complication' | a='Pathophysiology:\nPelvic inflammatory disease (PID) is charac' | ctx=1
+  [23/29] [FAIL] q188 [P] Tier 2  path=0→1→2  138s  Pelvic Inflammatory Disease
+[RAGAS] scores F=1.000 AR=0.911 CP=0.833 | q='difference in swelling location between urticaria and angioe' | ar_q='difference in swelling location between urticaria and angioe' | a='According to the MSD Manual, the key difference between the ' | ctx=3
+  [24/29] [PASS] q211 [P] Tier 0  path=0  21s  Urticaria
+[RAGAS] scores F=1.000 AR=0.809 CP=0.833 | q='hysterectomy rates after myomectomy for uterine fibroids sta' | ar_q='hysterectomy rates after myomectomy for uterine fibroids sta' | a='After myomectomy for uterine fibroids, about 25% of women un' | ctx=3
+  [25/29] [PASS] q222 [C] Tier 0  path=0  32s  Uterine Fibroid
+[RAGAS] scores F=1.000 AR=0.777 CP=1.000 | q='health problems caused by lipid-lowering medications and ini' | ar_q='health problems caused by lipid-lowering medications and ini' | a='Doctors usually perform blood tests before starting lipid-lo' | ctx=3
+[RAGAS] scores F=1.000 AR=0.777 CP=1.000 | q='What adverse effects are associated with lipid-lowering ther' | ar_q='health problems caused by lipid-lowering medications and ini' | a='Doctors usually perform blood tests before starting lipid-lo' | ctx=3
+[RAGAS] scores F=0.833 AR=0.777 CP=0.833 | q='What complications can arise from lipid-lowering drugs as pe' | ar_q='health problems caused by lipid-lowering medications and ini' | a='Doctors usually perform blood tests before starting lipid-lo' | ctx=3
+[RAGAS] scores F=1.000 AR=0.862 CP=1.000 | q='health problems caused by lipid-lowering medications and ini' | ar_q='health problems caused by lipid-lowering medications and ini' | a='Lipid-lowering medications can cause health problems such as' | ctx=1
+  [26/29] [FAIL] q228 [C] Tier 1  path=0→1  147s  Dyslipidemia
+[RAGAS] scores F=1.000 AR=0.696 CP=1.000 | q='What is the phase called when blood enters the heart as the ' | ar_q='What is the phase called when blood enters the heart as the ' | a='The MSD Manual calls the phase when blood enters the heart a' | ctx=3
+[RAGAS] scores F=0.933 AR=0.650 CP=1.000 | q="What is the term for the heart's relaxation phase when blood" | ar_q='What is the phase called when blood enters the heart as the ' | a="The MSD Manual calls the heart's relaxation phase diastole, " | ctx=3
+[RAGAS] scores F=1.000 AR=0.655 CP=1.000 | q="What is the term for the heart's filling phase during relaxa" | ar_q='What is the phase called when blood enters the heart as the ' | a="The MSD Manual calls the heart's filling phase during relaxa" | ctx=3
+Task exception was never retrieved
+future: <Task finished name='Task-576' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-577' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-578' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-579' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-580' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-581' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-582' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-583' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-584' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-585' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-586' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-587' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-588' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-589' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-590' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-591' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-592' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-593' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-594' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-595' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-596' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-597' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-598' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-599' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-600' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-601' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-602' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-603' coro=<AsyncClient.aclose() done, defined at C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpx\_transports\default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_async\http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\httpcore\_backends\anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\streams\tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "C:\dev\rag_ai\rag_nonmun\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\proactor_events.py", line 109, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 761, in call_soon
+    self._check_closed()
+  File "C:\Users\young\AppData\Local\Programs\Python\Python311\Lib\asyncio\base_events.py", line 519, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+[RAGAS] scores F=1.000 AR=0.751 CP=1.000 | q='What is the term for the phase when blood enters the heart d' | ar_q='What is the phase called when blood enters the heart as the ' | a='The term for the phase when blood enters the heart during re' | ctx=1
+[RAGAS] scores F=0.000 AR=0.703 CP=0.000 | q='What is the term for the phase when blood enters the heart d' | ar_q='What is the phase called when blood enters the heart as the ' | a='The MSD Manual calls the phase when blood comes into the hea' | ctx=1
+  [27/29] [FAIL] q232 [C] Tier 2  path=0→1→2  185s  Heart Failure
+[RAGAS] scores F=0.923 AR=0.908 CP=1.000 | q='fluid congestion in heart failure due to salt and water rete' | ar_q='fluid congestion in heart failure due to salt and water rete' | a='Salt and water retention in heart failure leads to fluid con' | ctx=3
+  [28/29] [PASS] q234 [C] Tier 0  path=0  34s  Heart Failure
+[RAGAS] scores F=0.667 AR=0.805 CP=0.583 | q='What are the limitations and potential outcomes after surgic' | ar_q='What are the limitations and potential outcomes after surgic' | a='Varicose veins often recur after removal by surgery or injec' | ctx=3
+[RAGAS] scores F=0.833 AR=0.807 CP=1.000 | q='What complications or recurrence rates are associated with s' | ar_q='What are the limitations and potential outcomes after surgic' | a='Varicose veins often recur or new varicose veins develop aft' | ctx=3
+  [29/29] [PASS] q239 [C] Tier 0  path=0  53s  Varicose Veins
+
+======================================================================
+  결과 요약
+======================================================================
+  테스트 대상: 29개
+  Tier 0 달성 (PASS): 17개  (58.6%)
+  Tier 1 에스컬레이션: 6개
+  Tier 2 에스컬레이션: 6개
+  오류: 0개
+  총 소요: 37분 1초
+
+  ▶ 여전히 실패 (12개):
+    q 26 [P] Tier 2  COPD
+    q 38 [P] Tier 2  Major Depressive Disorder
+    q 43 [P] Tier 2  Asthma
+    q 44 [P] Tier 2  Asthma
+    q 56 [P] Tier 1  Chronic Kidney Disease
+    q 59 [C] Tier 1  Chronic Kidney Disease
+    q 77 [C] Tier 1  Anemia
+    q163 [P] Tier 1  Irritable Bowel Syndrome
+    q179 [C] Tier 1  Lung Cancer
+    q188 [P] Tier 2  Pelvic Inflammatory Disease
+    q228 [C] Tier 1  Dyslipidemia
+    q232 [C] Tier 2  Heart Failure
+
+  상세 결과 저장: c:\dev\rag_ai\rag_nonmun\test_29_targeted_results.json
+======================================================================

@@ -2,7 +2,7 @@ import asyncio
 import logging
 import math
 import re
-from typing import List, NamedTuple, Sequence
+from typing import List, NamedTuple, Optional, Sequence
 
 import config.settings as settings
 from core.llm_client import ragas_async_client, ragas_model
@@ -274,10 +274,16 @@ def compute_official_ragas_scores(
     eval_client = ragas_async_client()
     llm = llm_factory(
         ragas_model(),
+        provider="anthropic",
         client=eval_client,
-        temperature=0,
         max_tokens=settings.RAGAS_LLM_MAX_TOKENS,
     )
+    # ragas의 Anthropic 어댑터는 OpenAI/Google과 달리 temperature·top_p를 그대로
+    # pass-through한다. Claude 5세대 모델은 둘 중 하나만 지정 가능(또는 temperature
+    # 자체가 deprecated)하여 기본값(temperature=0.01, top_p=0.1)이 동시에 실리면
+    # 400 에러가 난다. 둘 다 제거하고 모델 기본 샘플링에 맡긴다.
+    llm.model_args.pop("temperature", None)
+    llm.model_args.pop("top_p", None)
     embedder = HuggingFaceEmbeddings(model=settings.EMBEDDING_MODEL)
 
     faith = Faithfulness(llm=llm)
@@ -314,8 +320,9 @@ def compute_official_ragas_scores(
         finally:
             # httpx AsyncClient를 루프 종료 전에 명시적으로 닫아
             # "Event loop is closed" 경고를 방지한다.
+            # AsyncAnthropic은 aclose()가 아닌 close()를 제공한다 (AsyncOpenAI와 인터페이스 차이).
             try:
-                await eval_client.aclose()
+                await eval_client.close()
             except Exception:
                 pass
 
@@ -363,3 +370,140 @@ def compute_official_ragas_scores(
             answer_relevance=0.0,
             context_precision=0.0,
         )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 성능평가 전용 지표 (critic 루프 게이트와 무관, DB 기록·성능 시각화 전용)
+#
+# 아래 두 함수는 disease(STQS/ablation 정답 라벨)가 있는 요청에서만 호출한다
+# (critic_agent에서 gating). 일반 운영 쿼리는 ground truth가 없거나(IR 지표),
+# 순환성 교차검증이 의미가 없어(TruLens) 불필요한 LLM 호출·비용만 늘어난다.
+# ──────────────────────────────────────────────────────────────────────────────
+class IRMetrics(NamedTuple):
+    hit_rate: Optional[float]
+    mrr: Optional[float]
+
+
+def compute_ir_metrics(disease: str, context_sources: Sequence[str]) -> IRMetrics:
+    """전통적 IR 지표 Hit Rate / MRR.
+
+    data/ 폴더의 PDF 파일명이 질환명으로 시작하므로, context_sources(검색된 청크의
+    출처 파일 경로) 문자열에 disease명이 포함되면 정답 문서로 간주한다.
+    disease가 없으면(일반 운영 쿼리) ground truth가 없으므로 (None, None).
+    """
+    d = (disease or "").strip().lower()
+    if not d:
+        return IRMetrics(None, None)
+
+    for rank, source in enumerate(context_sources or [], start=1):
+        if d in (source or "").lower():
+            return IRMetrics(hit_rate=1.0, mrr=round(1.0 / rank, 6))
+    return IRMetrics(hit_rate=0.0, mrr=0.0)
+
+
+class TruLensTriad(NamedTuple):
+    context_relevance: Optional[float]
+    groundedness: Optional[float]
+    answer_relevance: Optional[float]
+
+
+_trulens_provider = None
+
+
+def _get_trulens_provider():
+    """TruLens LiteLLM provider를 지연 생성 후 재사용한다.
+
+    RAGAS 판정 LLM(Claude, settings.ANTHROPIC_MODEL)과 다른 provider인 Gemini
+    (settings.GEMINI_AUX_MODEL)를 사용한다. 프레임워크뿐 아니라 판정 모델 자체도
+    분리해 "같은 지표로 최적화하고 같은 지표로 평가"하는 순환성 문제를 더 완화한다.
+    """
+    global _trulens_provider
+    if _trulens_provider is None:
+        from trulens.providers.litellm import LiteLLM
+        _trulens_provider = LiteLLM(model_engine=f"gemini/{settings.GEMINI_AUX_MODEL}")
+    return _trulens_provider
+
+
+def _safe_unit_or_none(v) -> Optional[float]:
+    if v is None:
+        return None
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return None
+    if math.isnan(x):
+        return None
+    return max(0.0, min(1.0, x))
+
+
+def compute_trulens_triad(
+    question: str,
+    answer_body: str,
+    context_chunks: Sequence[str],
+) -> TruLensTriad:
+    """TruLens RAG Triad (Context Relevance / Groundedness / Answer Relevance).
+
+    RAGAS의 CP/F/AR과 개념은 대응되지만 독립된 프레임워크로 채점하여 교차검증한다.
+    실패 시 0.0이 아닌 None을 반환해 DB에 NULL로 남긴다 (측정 실패를 낮은 점수로
+    오인하지 않도록).
+    """
+    q = (question or "").strip()
+    a = (answer_body or "").strip()
+    chunks = [c.strip() for c in (context_chunks or []) if (c or "").strip()]
+    if not q or not a or not chunks:
+        return TruLensTriad(None, None, None)
+
+    try:
+        provider = _get_trulens_provider()
+    except Exception as e:
+        logger.warning("TruLens provider 생성 실패: %s", e, exc_info=True)
+        return TruLensTriad(None, None, None)
+
+    joined_ctx = "\n\n".join(chunks)
+
+    def _context_relevance() -> Optional[float]:
+        try:
+            scores = [
+                provider.context_relevance_with_cot_reasons(question=q, context=c)[0]
+                for c in chunks
+            ]
+            return sum(scores) / len(scores)
+        except Exception as e:
+            logger.warning("TruLens Context Relevance 평가 실패: %s", e, exc_info=True)
+            return None
+
+    def _groundedness() -> Optional[float]:
+        try:
+            return provider.groundedness_measure_with_cot_reasons(source=joined_ctx, statement=a)[0]
+        except Exception as e:
+            logger.warning("TruLens Groundedness 평가 실패: %s", e, exc_info=True)
+            return None
+
+    def _answer_relevance() -> Optional[float]:
+        try:
+            return provider.relevance_with_cot_reasons(prompt=q, response=a)[0]
+        except Exception as e:
+            logger.warning("TruLens Answer Relevance 평가 실패: %s", e, exc_info=True)
+            return None
+
+    import concurrent.futures
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
+            f_cr = ex.submit(_context_relevance)
+            f_gr = ex.submit(_groundedness)
+            f_ar = ex.submit(_answer_relevance)
+            cr = f_cr.result(timeout=90)
+            gr = f_gr.result(timeout=90)
+            ar = f_ar.result(timeout=90)
+    except Exception as e:
+        logger.error("TruLens RAG Triad 평가 전체 실패: %s", e, exc_info=True)
+        return TruLensTriad(None, None, None)
+
+    logger.info("[TruLens] scores CR=%s GR=%s AR=%s", cr, gr, ar)
+
+    return TruLensTriad(
+        context_relevance=_safe_unit_or_none(cr),
+        groundedness=_safe_unit_or_none(gr),
+        answer_relevance=_safe_unit_or_none(ar),
+    )

@@ -36,6 +36,9 @@
 | Answer Relevance (AR) | 답변이 질문과 관련된 정도 (0~1). Tier 1 평가에서는 단독으로 사용 |
 | Context Precision (CP) | 검색된 청크의 유효성(노이즈 없이 관련 정보만 포함하는 정도) (0~1) |
 | Q_total | 종합 품질 점수. 0.4·F + 0.4·AR + 0.2·CP |
+| 판정 LLM 분리 | Quality Gate(RAGAS)와 답변 생성에 서로 다른 LLM을 사용하는 설계. RAGAS는 Claude, 답변 생성은 OpenAI/Gemini 토글로 고정해 순환성(circularity) 편향을 방지 |
+| IR Hit Rate / MRR | 전통적 정보검색(IR) 지표. `disease` 정답 라벨과 검색 출처 파일명을 매칭해 계산하는 성능평가 전용 지표 (게이트 미사용) |
+| TruLens RAG Triad | RAGAS와 별개 프레임워크(Gemini 판정)로 Context Relevance/Groundedness/Answer Relevance를 계산해 F/AR/CP를 교차검증하는 성능평가 전용 지표 (게이트 미사용) |
 | FK Grade | Flesch-Kincaid Grade Level. 영어 텍스트 가독성 지표. 높을수록 어려운 글. Consumer 목표 ≤9, Professional 목표 ≥12 |
 | Self-Corrective Loop | RAGAS 기준 미달 시 쿼리를 재최적화하여 재검색하는 반복 루프 |
 | Tier | 지식 검색 계층. Tier 0(VectorDB) → Tier 1(LLM) → Tier 2(Web) |
@@ -79,7 +82,7 @@
   ├─ Tier 1: LLM 학습데이터 기반 생성 (AR만 평가)
   ├─ Tier 2: 웹검색 (DuckDuckGo)
   ├─ RAGAS 품질 평가 (F, AR, CP, Q_total)
-  ├─ FK Grade 계산 (번역 전 영어 원문, is_final=TRUE 행만)
+  ├─ FK Grade 계산 (출처·면책 조항 추가 전 영어 원문, is_final=TRUE 행만)
   ├─ A/E 조건별 자기교정 루프 (Proposal System / Baseline)
   └─ 감사 로그 저장 (N+1행: save_loop_log + save_audit_log)
   │
@@ -108,7 +111,7 @@
 
 - 본 시스템은 MSD 매뉴얼에 수록된 질환에 한해 Tier 0 정보를 제공한다.
 - 실제 진단·처방·치료를 대체하지 않는다.
-- OpenAI API 또는 Google Gemini API 키가 필요하다.
+- OpenAI API 키가 필요하다.
 - Oracle Database 연결이 없으면 감사 로그 저장 기능이 비활성화된다.
 - FAISS 인덱스는 BAAI/bge-base-en-v1.5로 빌드된 것과 동일한 모델로 쿼리해야 한다.
 - FK Grade는 영어 텍스트 기반 지표이므로 Tier 1(AR 단독 평가) 및 Fallback 행에는 적용되지 않는다.
@@ -209,6 +212,7 @@
 | **처리** | RAGAS 프레임워크의 공식 메트릭 사용. Streamlit 이벤트 루프 충돌 방지를 위해 ThreadPoolExecutor 내 별도 이벤트 루프에서 실행. |
 | **출력** | F, AR, CP 점수 (각 0~1), Q_total (0.4·F + 0.4·AR + 0.2·CP), 할루시네이션 플래그 목록, critic_feedback |
 | **Tier 1 예외** | Tier 1은 컨텍스트 청크가 없으므로 AR만 평가한다. 중간 로그의 F, CP, q_total은 NULL로 저장. |
+| **판정 LLM** | 답변 생성 LLM(OpenAI/Gemini 토글)과 무관하게 항상 **Claude**(`ANTHROPIC_MODEL`)로 고정. 동일 모델이 생성·채점을 겸할 때 발생하는 순환성(circularity) 편향을 방지하기 위함 |
 
 | 요구사항 ID | FR-009 |
 |-------------|--------|
@@ -272,10 +276,10 @@
 
 | 요구사항 ID | FR-014 |
 |-------------|--------|
-| **요구사항명** | 한국어 번역 |
+| **요구사항명** | 출처·면책 조항 부가 |
 | **우선순위** | 필수 |
-| **설명** | 영문으로 생성된 답변을 한국어로 번역하여 사용자에게 제공해야 한다. |
-| **처리** | gpt-4o-mini를 사용하여 의료 용어의 정확성을 유지한 상태로 번역. FK Grade는 번역 전 영어 원문으로 계산하여 저장 후 번역 수행. |
+| **설명** | 시스템은 영문으로 생성된 답변에 검색 출처(MSD 매뉴얼 파일·페이지 / LLM 학습데이터 / 웹 URL)와 표준 면책 조항을 덧붙여 최종 응답을 완성해야 한다. 번역은 수행하지 않으며 영어 원문을 그대로 사용자에게 제공한다. |
+| **처리** | `agents/output.py`의 `output_agent`가 LLM 호출 없이 문자열 포맷팅으로 처리. FK Grade는 이 출처·면책 조항 추가 전 영어 원문으로 계산하여 저장한다. |
 
 ---
 
@@ -286,7 +290,7 @@
 | **요구사항명** | PDF 업로드 및 인덱싱 |
 | **우선순위** | 필수 |
 | **설명** | 사용자는 UI를 통해 새로운 PDF 문서를 업로드하고 기존 인덱스에 추가할 수 있어야 한다. |
-| **처리** | PyMuPDF로 텍스트 추출. 스캔 PDF의 경우 RapidOCR로 텍스트 인식 후 500자 청크로 분할, 60자 오버랩 적용. URL 청크 필터링 후 BAAI/bge-base-en-v1.5로 임베딩 |
+| **처리** | PyMuPDF로 텍스트 추출. 스캔 PDF의 경우 RapidOCR로 텍스트 인식 후 1000자 청크로 분할(`.env`의 `MEDICAL_RAG_CHUNK_MAX_CHARS` 기준, 코드 기본값은 500자), 60자 오버랩 적용. URL 청크 필터링 후 BAAI/bge-base-en-v1.5로 임베딩 |
 
 | 요구사항 ID | FR-016 |
 |-------------|--------|
@@ -344,10 +348,21 @@
 | **우선순위** | 필수 |
 | **설명** | 시스템은 답변의 가독성을 Flesch-Kincaid Grade Level로 자동 측정하여 감사 로그에 저장해야 한다. |
 | **계산 공식** | `0.39 × (단어수/문장수) + 11.8 × (음절수/단어수) − 15.59` |
-| **계산 시점** | output_agent(한국어 번역) 호출 전, 영어 원문 답변(state["answer"])을 기준으로 계산 |
+| **계산 시점** | output_agent(출처·면책 조항 추가) 호출 전, 영어 원문 답변(state["answer"])을 기준으로 계산 |
 | **저장 조건** | is_final=TRUE이고 is_fallback=FALSE인 행에만 저장. 나머지는 NULL |
 | **목표 기준** | Consumer: fk_grade ≤ 9 (NIH 건강 정보 이해도 권고 수준) / Professional: fk_grade ≥ 12 (의학 저널 평균 수준) |
 | **적용 예외** | Tier 1(fk_grade 저장은 하지만 AR 단독 평가이므로 영어 원문 품질이 낮을 수 있음), Fallback(fk_grade=NULL) |
+
+| 요구사항 ID | FR-021 |
+|-------------|--------|
+| **요구사항명** | 성능평가 전용 지표 (IR Hit Rate/MRR, TruLens RAG Triad) |
+| **우선순위** | 선택 |
+| **설명** | 시스템은 `disease`(STQS-240/ablation 정답 라벨)가 있는 요청에 한해, RAGAS(FR-008)와 독립적으로 전통적 정보검색 지표와 별도 프레임워크 기반 교차검증 지표를 계산해 감사 로그에 기록해야 한다. Self-Corrective Loop(FR-009)의 성공/에스컬레이션 판단에는 관여하지 않는다. |
+| **배경** | Critic Agent가 RAGAS를 런타임 Quality Gate로 사용하면서 최종 성능평가까지 RAGAS 단독에 의존하면 "동일 지표로 최적화하고 동일 지표로 평가"하는 순환성(circularity) 편향 비판이 발생할 수 있어, 독립 지표로 교차검증한다. |
+| **IR Hit Rate / MRR** | 검색된 청크의 출처 파일명(`context_sources`)에 `disease`명이 포함되는지로 정답 문서 적중 여부(Hit Rate, 0/1)와 첫 적중 순위의 역수(MRR)를 계산. LLM 불필요, 순수 문자열 매칭 |
+| **TruLens RAG Triad** | Context Relevance / Groundedness / Answer Relevance 3종을 RAGAS와 다른 프레임워크·다른 판정 모델(**Gemini**, `GEMINI_AUX_MODEL`)로 계산해 F/AR/CP를 교차검증 |
+| **생략 조건** | `disease`가 없는 일반 운영 쿼리는 ground truth가 없거나(IR) 교차검증 목적이 없어(TruLens) 계산을 생략하고 NULL로 저장한다 (불필요한 LLM 호출 비용 방지) |
+| **저장** | `hit_rate_score`, `mrr_score`, `trulens_context_relevance`, `trulens_groundedness`, `trulens_answer_relevance` → 감사 로그의 `ir_hit_rate`, `ir_mrr`, `trulens_context_relevance`, `trulens_groundedness`, `trulens_answer_relevance` 컬럼 |
 
 ---
 
@@ -382,7 +397,7 @@
 | 요구사항 ID | NFR-005 |
 |-------------|---------|
 | **요구사항명** | API 키 보안 |
-| **설명** | OpenAI, Gemini API 키 및 Oracle DB 연결 정보는 .env 파일에만 저장하며 소스코드에 하드코딩하지 않는다. |
+| **설명** | OpenAI API 키 및 Oracle DB 연결 정보는 .env 파일에만 저장하며 소스코드에 하드코딩하지 않는다. |
 
 ### 4.4 유지보수성 요구사항
 
@@ -401,7 +416,7 @@
 | 요구사항 ID | NFR-008 |
 |-------------|---------|
 | **요구사항명** | LLM 백엔드 교체 가능성 |
-| **설명** | OpenAI와 Gemini 중 하나를 선택하여 사용할 수 있어야 하며, 추가 LLM 백엔드를 확장 가능한 구조로 설계되어야 한다. |
+| **설명** | OpenAI API를 LLM 백엔드로 사용하며, 추가 LLM 백엔드로 확장 가능한 구조로 설계되어야 한다. |
 
 ---
 
@@ -411,8 +426,9 @@
 
 | 인터페이스 | 유형 | 설명 |
 |-----------|------|------|
-| OpenAI API | REST API | GPT-4o 모델을 통한 답변 생성, 번역, 분류 |
-| Google Gemini API | REST API | Gemini 모델을 통한 답변 생성 (OpenAI 호환 API) |
+| OpenAI API | REST API | GPT 모델을 통한 답변 생성, 쿼리 재작성, 분류 |
+| Anthropic API | REST API | Claude 모델을 통한 RAGAS 판정 (F/AR/CP). 답변 생성 LLM과 무관하게 항상 사용 (필수) |
+| Google Gemini API | REST API (LiteLLM 경유) | TruLens RAG Triad 판정. `disease` 있는 STQS/ablation 요청에서만 사용 |
 | Oracle Database | oracledb 직접 연결 | 감사 로그 저장 및 조회 (N+1행 INSERT only) |
 | DuckDuckGo Search | 라이브러리 | Tier 2 웹검색 |
 | HuggingFace | 모델 다운로드 | **BAAI/bge-base-en-v1.5** 임베딩 모델 (768차원) |

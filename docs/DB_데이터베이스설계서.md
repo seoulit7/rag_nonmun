@@ -1,7 +1,7 @@
 # 데이터베이스 설계서 (Database Design Document)
 
 **프로젝트명**: 의료 정보 자기교정 RAG 시스템  
-**문서버전**: v5.1  
+**문서버전**: v5.2  
 **작성일**: 2026-06-20  
 **작성자**: 연구자
 
@@ -23,6 +23,7 @@
 | v4.0 | `fk_grade` 컬럼 추가 (Flesch-Kincaid Grade Level, is_final=TRUE 행만 기록) |
 | v5.0 | `hallucination_detected`, `hallucination_count` 컬럼 제거 |
 | v5.1 | `final_answer` VARCHAR2→CLOB, `query_index` 범위 1-240으로 확대, PostgreSQL → Oracle Database 마이그레이션 |
+| v5.2 | 성능평가 전용 지표 5종 추가: `ir_hit_rate`, `ir_mrr`, `trulens_context_relevance`, `trulens_groundedness`, `trulens_answer_relevance`. critic 루프의 Quality Gate(F/AR/CP)와는 분리되어 기록 전용으로만 사용. 동시에 RAGAS 판정 LLM을 **Claude**로 고정(답변 생성 LLM과 분리)하고 TruLens 판정 LLM은 **Gemini**로 지정 — RAGAS 단독·동일 모델 평가의 순환성(circularity) 비판을 피하기 위한 독립 교차검증 설계 |
 
 ### 1.2 데이터베이스 구성
 
@@ -55,7 +56,7 @@
 - `_output_node` 완료 시 → `save_audit_log(fk_grade=fk)` → is_final=**1**, final_answer(CLOB) 포함, **fk_grade 포함**
 - `_fallback_node` 완료 시 → `save_audit_log(fk_grade=None)` → is_final=**1**, is_fallback=1, fk_grade=NULL
 
-**fk_grade 계산 시점**: `graph.py`의 `_output_node`에서 `output_agent` 호출(한국어 번역) *전*에 영어 원문으로 `flesch_kincaid_grade_en()`을 실행한다. 번역 후에는 영어 텍스트가 소실되므로 반드시 번역 전에 계산해야 한다.
+**fk_grade 계산 시점**: `graph.py`의 `_output_node`에서 `output_agent` 호출(출처·면책 조항 추가) *전*에 영어 원문으로 `flesch_kincaid_grade_en()`을 실행한다. `output_agent`가 출처·면책 문구를 덧붙이면 순수 영어 답변이 아니게 되므로 반드시 그 전에 계산해야 한다.
 
 ### 2.2 엔터티 정의
 
@@ -89,8 +90,13 @@
 | 검색문서수 | 검색된 컨텍스트 청크 수 | NUMBER(10) | - |
 | LLM모델 | 사용된 LLM 백엔드 식별자 | VARCHAR2(50) | - |
 | 실행시간 | 전체 워크플로우 소요 시간 (ms) | NUMBER(10) | - |
-| 최종답변 | 한국어 번역된 최종 답변 | **CLOB** | - |
+| 최종답변 | 출처·면책 조항이 포함된 최종 영어 답변 | **CLOB** | - |
 | **FK Grade** | Flesch-Kincaid Grade Level (영어 원문 기준) | BINARY_DOUBLE | - |
+| **IR Hit Rate** | top-k 검색 결과 내 정답 문서(disease 라벨 기준) 적중 여부 (0/1). 일반 운영 시 NULL | BINARY_DOUBLE | - |
+| **IR MRR** | 정답 문서가 처음 등장한 순위의 역수 (1/rank), 미적중 시 0. 일반 운영 시 NULL | BINARY_DOUBLE | - |
+| TruLens Context Relevance | TruLens RAG Triad 기반 컨텍스트 관련도 (RAGAS CP 교차검증용) | BINARY_DOUBLE | - |
+| TruLens Groundedness | TruLens RAG Triad 기반 근거성 (RAGAS F 교차검증용) | BINARY_DOUBLE | - |
+| TruLens Answer Relevance | TruLens RAG Triad 기반 답변 관련성 (RAGAS AR 교차검증용) | BINARY_DOUBLE | - |
 
 ### 2.3 ERD (단일 테이블)
 
@@ -148,7 +154,7 @@
 | BR-11 | is_final=1 행: output/fallback 노드 완료 직후 저장 (final_answer(CLOB) 포함) |
 | BR-12 | 최종 결과 집계 시 반드시 WHERE is_final = 1 필터를 사용한다 |
 | BR-13 | fk_grade는 is_final=1이고 is_fallback=0인 행에만 값이 존재한다. 중간 행과 fallback 행은 NULL |
-| BR-14 | fk_grade는 한국어 번역 전 영어 원문 답변을 기준으로 계산한다 (Flesch-Kincaid Grade Level 공식) |
+| BR-14 | fk_grade는 output_agent의 출처·면책 조항 추가 전 영어 원문 답변을 기준으로 계산한다 (Flesch-Kincaid Grade Level 공식) |
 | BR-15 | Tier 1 행: F, CP, q_total은 NULL (컨텍스트 없음). AR만 유효 |
 
 ### 2.5 데이터 흐름 시나리오
@@ -162,7 +168,7 @@ request_id = "abc-001", ablation_condition = "A"
 | loop_number | is_final | final_tier | ragas_f | ragas_ar | q_total | fk_grade | final_answer |
 |-------------|----------|------------|---------|----------|---------|----------|--------------|
 |      1      |    0     |     0      |  0.930  |  0.921   |  0.908  |   NULL   |    NULL      |  ← save_loop_log
-|      1      |    1     |     0      |  0.930  |  0.921   |  0.908  |  11.20   |  "갑상선..."  |  ← save_audit_log
+|      1      |    1     |     0      |  0.930  |  0.921   |  0.908  |  11.20   |  "Hypothyroidism..."  |  ← save_audit_log
 ```
 
 #### 시나리오 B: Proposal System — Tier 0 자가 교정 2회 후 Tier 1 에스컬레이션 → 성공
@@ -176,7 +182,7 @@ request_id = "xyz-002", ablation_condition = "A"
 |      1      |    0     |     0      |    "0"    |  0.61   |  0.57    |           0           |   NULL   |     NULL     |
 |      2      |    0     |     0      |    "0"    |  0.72   |  0.68    |           1           |   NULL   |     NULL     |
 |      3      |    0     |     1      |   "0→1"   |  NULL   |  0.840   |           2           |   NULL   |     NULL     |  ← Tier1: F/CP=NULL
-|      3      |    1     |     1      |   "0→1"   |  NULL   |  0.840   |           2           |   NULL   |  "관상동맥..." |  ← Tier1 최종행: fk_grade=NULL
+|      3      |    1     |     1      |   "0→1"   |  NULL   |  0.840   |           2           |   NULL   |  "Coronary artery..." |  ← Tier1 최종행: fk_grade=NULL
 ```
 
 #### 시나리오 C: Proposal System — Tier 0 성공 (Consumer, fk_grade 낮음)
@@ -188,7 +194,7 @@ request_id = "cons-003", ablation_condition = "A", user_level="Consumer"
 | loop_number | is_final | user_level | ragas_f | ragas_ar | q_total | fk_grade | final_answer |
 |-------------|----------|------------|---------|----------|---------|----------|--------------|
 |      1      |    0     |  Consumer  |  0.88   |  0.85    |  0.872  |   NULL   |     NULL     |
-|      1      |    1     |  Consumer  |  0.88   |  0.85    |  0.872  |  8.50    |  "감기란..."  |  ← fk_grade ≤ 9 목표
+|      1      |    1     |  Consumer  |  0.88   |  0.85    |  0.872  |  8.50    |  "The common cold..."  |  ← fk_grade ≤ 9 목표
 ```
 
 ---
@@ -200,7 +206,7 @@ request_id = "cons-003", ablation_condition = "A", user_level="Consumer"
 ```sql
 -- ============================================================
 -- rag_audit_log 테이블 생성 스크립트 (Oracle)
--- 버전: v5.1
+-- 버전: v5.2
 -- ============================================================
 
 BEGIN EXECUTE IMMEDIATE 'DROP TABLE rag_audit_log'; EXCEPTION WHEN OTHERS THEN IF SQLCODE != -942 THEN RAISE; END IF; END;
@@ -257,6 +263,13 @@ CREATE TABLE rag_audit_log (
     -- 가독성 지표
     fk_grade                BINARY_DOUBLE,      -- Flesch-Kincaid Grade Level (영어 원문 기준)
 
+    -- 성능평가 전용 지표 (v5.2, critic 루프 게이트와 무관, disease 라벨 있는 STQS 행만 기록)
+    ir_hit_rate              BINARY_DOUBLE,      -- 0 또는 1 (top-k 내 정답 문서 적중 여부)
+    ir_mrr                   BINARY_DOUBLE,      -- 0~1 (1/rank, 정답 문서 첫 등장 순위 역수)
+    trulens_context_relevance BINARY_DOUBLE,     -- TruLens RAG Triad — RAGAS CP 교차검증
+    trulens_groundedness      BINARY_DOUBLE,     -- TruLens RAG Triad — RAGAS F 교차검증
+    trulens_answer_relevance  BINARY_DOUBLE,     -- TruLens RAG Triad — RAGAS AR 교차검증
+
     CONSTRAINT pk_rag_audit_log PRIMARY KEY (log_id)
 );
 /
@@ -271,6 +284,32 @@ BEGIN
 END;
 /
 ```
+
+### 3.1.1 기존 테이블 마이그레이션 (v5.1 → v5.2, ALTER TABLE)
+
+이미 데이터가 쌓인 운영 테이블에는 위 `CREATE TABLE`(DROP 포함) 스크립트를 재실행하지 말고, 아래 `ALTER TABLE`로 컬럼만 추가한다. `rag_audit_log`/`rag_audit_log_bak` 양쪽 모두에 적용.
+
+```sql
+ALTER TABLE rag_audit_log ADD (
+    ir_hit_rate               BINARY_DOUBLE,
+    ir_mrr                    BINARY_DOUBLE,
+    trulens_context_relevance BINARY_DOUBLE,
+    trulens_groundedness      BINARY_DOUBLE,
+    trulens_answer_relevance  BINARY_DOUBLE
+);
+/
+
+ALTER TABLE rag_audit_log_bak ADD (
+    ir_hit_rate               BINARY_DOUBLE,
+    ir_mrr                    BINARY_DOUBLE,
+    trulens_context_relevance BINARY_DOUBLE,
+    trulens_groundedness      BINARY_DOUBLE,
+    trulens_answer_relevance  BINARY_DOUBLE
+);
+/
+```
+
+기존 행은 전부 NULL로 채워지며(신규 컬럼 NULL 허용), 재계산 없이도 이후 INSERT부터 값이 채워진다.
 
 ### 3.2 컬럼 상세 명세
 
@@ -293,15 +332,20 @@ END;
 | `is_escalated` | NUMBER(1) | NOT NULL | 0 | Tier 에스컬레이션 발생 여부 (tier_path != "0") |
 | `is_fallback` | NUMBER(1) | NOT NULL | 0 | 모든 Tier 소진으로 Fallback 처리 여부 |
 | `self_correction_count` | NUMBER(5) | NOT NULL | 0 | Tier 0 내 자가 교정 누적 횟수 |
-| `ragas_f` | BINARY_DOUBLE | NULL | — | RAGAS Faithfulness (0~1). Tier 1 행은 NULL |
-| `ragas_ar` | BINARY_DOUBLE | NULL | — | RAGAS Answer Relevance (0~1). 모든 Tier 사용 |
-| `ragas_cp` | BINARY_DOUBLE | NULL | — | RAGAS Context Precision (0~1). Tier 1 행은 NULL |
+| `ragas_f` | BINARY_DOUBLE | NULL | — | RAGAS Faithfulness (0~1). 판정 LLM: **Claude**(`ANTHROPIC_MODEL`, 답변 생성 LLM과 무관하게 고정). Tier 1 행은 NULL |
+| `ragas_ar` | BINARY_DOUBLE | NULL | — | RAGAS Answer Relevance (0~1). 판정 LLM: Claude. 모든 Tier 사용 |
+| `ragas_cp` | BINARY_DOUBLE | NULL | — | RAGAS Context Precision (0~1). 판정 LLM: Claude. Tier 1 행은 NULL |
 | `q_total` | BINARY_DOUBLE | NULL | — | 종합 품질 점수: 0.4·F + 0.4·AR + 0.2·CP. Tier 1 행은 NULL |
 | `retrieved_doc_count` | NUMBER(10) | NULL | — | 검색된 컨텍스트 청크 수 |
-| `llm_model` | VARCHAR2(50) | NULL | — | 사용된 LLM 백엔드 ('openai', 'gemini') |
+| `llm_model` | VARCHAR2(50) | NULL | — | 답변 생성에 사용된 LLM 백엔드 ('openai'/'gemini'). RAGAS 판정(Claude)·TruLens 판정(Gemini)과는 별개 |
 | `execution_time_ms` | NUMBER(10) | NULL | — | 전체 워크플로우 소요 시간 (ms). is_final=0 행은 NULL |
-| `final_answer` | **CLOB** | NULL | — | 한국어 번역된 최종 답변. is_final=0 행은 NULL |
+| `final_answer` | **CLOB** | NULL | — | 출처·면책 조항이 포함된 최종 영어 답변. is_final=0 행은 NULL |
 | `fk_grade` | BINARY_DOUBLE | NULL | — | Flesch-Kincaid Grade Level. is_final=1이고 is_fallback=0인 행만 기록. Consumer 목표 ≤9, Professional 목표 ≥12 |
+| `ir_hit_rate` | BINARY_DOUBLE | NULL | — | 전통적 IR 지표. top-k 검색 결과 중 `disease` 라벨과 매칭되는 출처 문서가 하나라도 있으면 1, 없으면 0. `disease`가 NULL인 일반 운영 행은 ground truth가 없으므로 NULL. LLM 불필요(문자열 매칭). **critic 루프 게이트에는 미사용, 성능평가 전용** |
+| `ir_mrr` | BINARY_DOUBLE | NULL | — | Mean Reciprocal Rank. `disease` 라벨과 매칭되는 첫 출처 문서의 순위 역수(1/rank), 미적중 시 0. `disease`가 NULL인 행은 NULL. **성능평가 전용** |
+| `trulens_context_relevance` | BINARY_DOUBLE | NULL | — | TruLens RAG Triad. 판정 LLM: **Gemini**(`GEMINI_AUX_MODEL`, LiteLLM 경유). RAGAS `ragas_cp`와 별도 프레임워크·별도 모델로 교차검증. **성능평가 전용, 게이트 미사용** |
+| `trulens_groundedness` | BINARY_DOUBLE | NULL | — | TruLens RAG Triad. 판정 LLM: Gemini. RAGAS `ragas_f`와 별도 프레임워크·별도 모델로 교차검증. **성능평가 전용, 게이트 미사용** |
+| `trulens_answer_relevance` | BINARY_DOUBLE | NULL | — | TruLens RAG Triad. 판정 LLM: Gemini. RAGAS `ragas_ar`와 별도 프레임워크·별도 모델로 교차검증. **성능평가 전용, 게이트 미사용** |
 
 ### 3.3 인덱스 (Indexes)
 
@@ -444,7 +488,7 @@ ORDER BY loop_number;
 | **생성 방법** | 사이드바 "인덱스 전체 재빌드" 버튼 또는 pre-built 인덱스 배치 |
 | **로드 정책** | 앱 시작 시 기존 인덱스가 있으면 로드만 수행 (자동 재빌드 없음) |
 | **임베딩 모델** | `BAAI/bge-base-en-v1.5` (768차원, 코사인 유사도) |
-| **청크 크기** | 최대 500자, 60자 오버랩 |
+| **청크 크기** | 최대 1000자, 60자 오버랩 (`.env`의 `MEDICAL_RAG_CHUNK_MAX_CHARS` 기준, 코드 기본값은 500자) |
 | **URL 필터링** | http://, https:// 포함 청크는 인덱싱 제외 |
 
 ### FAISS 인덱스 구조
@@ -474,8 +518,8 @@ db/
     │  (loop_number, RAGAS 점수, tier 정보 포함 / final_answer=NULL / fk_grade=NULL)
     ▼
 [output 완료]
-    │  fk_grade = flesch_kincaid_grade_en(영어 원문)  ← 번역 전 계산
-    │  output_agent() → 한국어 번역
+    │  fk_grade = flesch_kincaid_grade_en(영어 원문)  ← 출처·면책 조항 추가 전 계산
+    │  output_agent() → 출처·면책 조항 추가
     │  save_audit_log(fk_grade=fk) → INSERT is_final=1
     │  (final_answer(CLOB), execution_time_ms, fk_grade 포함)
     │  UPDATE 없음

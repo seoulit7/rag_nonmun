@@ -56,21 +56,17 @@ def get_chat_llm(
 
 
 def ragas_async_client():
-    """RAGAS 평가용 AsyncOpenAI 클라이언트 (RAGAS 라이브러리 내부 호환성)."""
-    from openai import AsyncOpenAI
-    if get_llm_provider() == "gemini":
-        k = settings.get_gemini_api_key()
-        if not k:
-            raise RuntimeError("GEMINI_API_KEY가 설정되지 않았습니다.")
-        return AsyncOpenAI(
-            api_key=k,
-            base_url=settings.GEMINI_OPENAI_COMPAT_BASE_URL,
-            max_retries=_LLM_MAX_RETRIES,
-        )
-    k = settings.get_openai_api_key()
+    """RAGAS 평가용 AsyncAnthropic 클라이언트.
+
+    답변 생성 LLM(OpenAI/Gemini, get_llm_provider() 토글)과 무관하게 항상 Claude를 사용한다.
+    같은 모델이 답변 생성과 채점을 겸하면 순환성(circularity) 편향 비판이 생기므로,
+    RAGAS 판정 LLM만 별도 provider로 고정 분리한다.
+    """
+    from anthropic import AsyncAnthropic
+    k = settings.get_anthropic_api_key()
     if not k:
-        raise RuntimeError("OPENAI_API_KEY가 설정되지 않았습니다.")
-    return AsyncOpenAI(api_key=k, max_retries=_LLM_MAX_RETRIES)
+        raise RuntimeError("ANTHROPIC_API_KEY가 설정되지 않았습니다.")
+    return AsyncAnthropic(api_key=k, max_retries=_LLM_MAX_RETRIES)
 
 
 def classifier_model() -> str:
@@ -85,9 +81,6 @@ def rag_engine_model() -> str:
     return settings.GEMINI_MODEL if get_llm_provider() == "gemini" else settings.OPENAI_MODEL
 
 
-def translate_model() -> str:
-    return settings.GEMINI_AUX_MODEL if get_llm_provider() == "gemini" else settings.TRANSLATE_MODEL
-
-
 def ragas_model() -> str:
-    return settings.GEMINI_AUX_MODEL if get_llm_provider() == "gemini" else settings.RAGAS_LLM_MODEL
+    """RAGAS 평가 전용 모델명. 항상 Claude (get_llm_provider() 토글과 무관)."""
+    return settings.ANTHROPIC_MODEL

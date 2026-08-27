@@ -68,8 +68,8 @@
 │  │         │               ┌──────┴──────┐                       │  │
 │  │         │               ▼             ▼                       │  │
 │  │         │     [output (_output_node)] [fallback]              │  │
-│  │         │     FK Grade 계산(번역 전)   save_audit_log          │  │
-│  │         │     output_agent 번역        (fk_grade=None)        │  │
+│  │         │     FK Grade 계산            save_audit_log          │  │
+│  │         │     output_agent(출처/면책)  (fk_grade=None)        │  │
 │  │         │     save_audit_log(fk_grade)                        │  │
 │  │         │               │             │                       │  │
 │  │         └───────────────┴─────────────┘                       │  │
@@ -79,9 +79,9 @@
 │  ┌──────────────┐  ┌──────────────┐  ┌─────────────────────────┐   │
 │  │ agents/      │  │ core/        │  │ config/settings.py      │   │
 │  │ classifier   │  │ llm_client   │  │ (모든 임계값·모델 설정)   │   │
-│  │ rewriter     │  │ (OpenAI/     │  └─────────────────────────┘   │
-│  │ rag_engine   │  │  Gemini)     │                                 │
-│  │ critic       │  └──────────────┘                                 │
+│  │ rewriter     │  │ (OpenAI)     │  └─────────────────────────┘   │
+│  │ rag_engine   │  └──────────────┘                                 │
+│  │ critic       │                                                    │
 │  │ output       │                                                    │
 │  └──────────────┘                                                    │
 └─────────────────────────────────────────────────────────────────────┘
@@ -101,7 +101,7 @@
 │                        External Services                             │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌────────┐  │
 │  │ FAISS Index  │  │   Oracle     │  │  OpenAI API  │  │DuckDuck│  │
-│  │ (로컬 폴더)  │  │  Database    │  │  Gemini API  │  │Go API  │  │
+│  │ (로컬 폴더)  │  │  Database    │  │              │  │Go API  │  │
 │  └──────────────┘  └──────────────┘  └──────────────┘  └────────┘  │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -161,6 +161,12 @@ class GraphState(TypedDict):
     answer_relevance_score:   float        # Answer Relevance (0~1); AR은 항상 queries[0] 기준 평가
     context_precision_score:  float        # Context Precision (0~1)
     critic_feedback:          str          # 기준 미달 지표·원인을 자연어로 요약한 재쿼리 힌트
+    # ── 성능평가 전용 지표 (게이트 무관, disease 있는 STQS/ablation 행만 값 존재) ──
+    hit_rate_score:            float        # IR Hit Rate (0/1), 일반 운영 시 None
+    mrr_score:                 float        # IR MRR (0~1), 일반 운영 시 None
+    trulens_context_relevance: float        # TruLens RAG Triad — RAGAS CP 교차검증 (Gemini 판정)
+    trulens_groundedness:      float        # TruLens RAG Triad — RAGAS F 교차검증 (Gemini 판정)
+    trulens_answer_relevance:  float        # TruLens RAG Triad — RAGAS AR 교차검증 (Gemini 판정)
     # ── 티어 및 루프 ───────────────────────────────────────────────────
     search_tier:              int          # 현재 검색 티어 (0/1/2)
     loop_count:               int          # 현재 Tier 재시도 횟수
@@ -171,7 +177,7 @@ class GraphState(TypedDict):
     best_answer:              str          # 루프 전체에서 Q_total이 가장 높은 답변 (Fallback 우선 사용)
     best_q_total:             float        # 해당 답변의 Q_total (0.4·F + 0.4·AR + 0.2·CP)
     # ── 시스템 정보 ────────────────────────────────────────────────────
-    llm_provider:             str          # "openai" | "gemini"
+    llm_provider:             str          # "openai"
     workflow_start_time:      float        # time.time() 워크플로우 시작 시각
     log:                      List[str]    # 실행 로그
     # ── 실험 조건 메타데이터 ──────────────────────────────────────────
@@ -207,7 +213,7 @@ level_classifier ──► query_rewriter ──► rag_engine ──► critic
 | `query_rewriter` | `agents/rewriter.py` | 한국어 질문 → 영문 의료 검색 쿼리 최적화 |
 | `rag_engine` | `agents/rag_engine.py` | Tier별 검색 및 수준별 맞춤 답변 합성 (FK Grade 목표 적용) |
 | `critic` | `agents/critic.py` + `graph.py` | RAGAS 3중 평가 + A/E 조건별 Self-Corrective 라우팅 + save_loop_log() |
-| `output` | `agents/output.py` + `graph.py` | FK Grade 계산(번역 전) → 한국어 번역 → 출처·면책 조항 → save_audit_log(fk_grade) |
+| `output` | `agents/output.py` + `graph.py` | FK Grade 계산 → output_agent(출처·면책 조항 추가) → save_audit_log(fk_grade) |
 | `fallback` | `graph.py` | 원문 제시 → save_audit_log(is_fallback=True, fk_grade=None) |
 
 #### 3.2.3 Self-Corrective Loop 라우팅 로직
@@ -267,7 +273,7 @@ PDF 파일 (data/)
     │
     ▼
 [RecursiveCharacterTextSplitter]
-  chunk_size=500, chunk_overlap=60
+  chunk_size=1000, chunk_overlap=60  (.env MEDICAL_RAG_CHUNK_MAX_CHARS 기준, 코드 기본값은 500)
     │
     ▼
 [URL 청크 필터링]  (http://, https:// 포함 청크 제거)
@@ -304,8 +310,8 @@ save_loop_log(state, request_id, eval_count)
 
 output_node 완료
     │
-    ├─ fk_grade = flesch_kincaid_grade_en(state["answer"])  ← 번역 전 영어 원문
-    ├─ output_agent(state)  ← 한국어 번역
+    ├─ fk_grade = flesch_kincaid_grade_en(state["answer"])  ← 출처·면책 조항 추가 전 영어 원문
+    ├─ output_agent(state)  ← 출처·면책 조항 추가
     │
     ▼
 save_audit_log(state, request_id, fk_grade=fk)
@@ -317,8 +323,9 @@ save_audit_log(state, request_id, fk_grade=fk)
 
 **fk_grade NULL 조건:**
 - is_final=FALSE 행: 항상 NULL (중간 평가)
-- is_final=TRUE이고 is_fallback=TRUE: NULL (혼합 언어 답변)
-- is_final=TRUE이고 is_fallback=FALSE: fk 값 (번역 전 영어 원문 기준)
+- is_final=TRUE, is_fallback=FALSE (output 경로): fk 값
+- is_final=TRUE, is_fallback=TRUE, best_answer 존재: fk 값 (best_answer 기준)
+- is_final=TRUE, is_fallback=TRUE, best_answer 없음(원문 청크 그대로 제시): NULL
 
 #### 3.3.3 RAGAS 및 FK Grade 평가 (`infra/evaluator.py`)
 
@@ -345,12 +352,29 @@ asyncio.gather(
 OfficialRagasScores(faithfulness, answer_relevance, context_precision, hallu_flags)
 ```
 
+**판정 LLM: Claude 고정 (`ragas_async_client()` / `ragas_model()`)**
+
+`llm_factory(ragas_model(), provider="anthropic", client=AsyncAnthropic(...))`로 구성한다. `core/llm_client.py`의 `ContextVar[llm_provider]`(답변 생성용 OpenAI/Gemini 토글)와 완전히 분리되어 있어, 어떤 백엔드로 답변을 생성하든 채점은 항상 Claude(`ANTHROPIC_MODEL`, 기본 `claude-haiku-4-5-20251001`)가 수행한다. 같은 모델이 생성과 채점을 겸할 때 생기는 순환성(circularity) 편향을 피하기 위한 설계.
+
+> **호환성 이슈**: 설치된 `ragas`(0.4.3)의 Anthropic 어댑터는 OpenAI/Google과 달리 `temperature`/`top_p`를 무조건 pass-through한다. Claude 5세대 모델은 두 값을 동시에 받으면 400 에러를 내므로, `llm_factory()` 반환 객체의 `llm.model_args`에서 `temperature`·`top_p` 키를 제거하고 모델 기본 샘플링에 맡긴다.
+
+**성능평가 전용 지표 (`compute_ir_metrics`, `compute_trulens_triad`)**
+
+`disease`(STQS-240/ablation 정답 라벨)가 있는 요청에서만 critic_agent가 호출하며, Self-Correction Loop 게이트에는 관여하지 않고 DB 기록·성능 시각화 전용으로만 쓰인다.
+
+| 함수 | 방식 | 판정 LLM |
+|------|------|----------|
+| `compute_ir_metrics(disease, context_sources)` | `context_sources` 파일명에 `disease`명 포함 여부로 Hit Rate(0/1)·MRR(1/rank) 계산 | 없음 (순수 문자열 매칭) |
+| `compute_trulens_triad(question, answer, context_chunks)` | TruLens RAG Triad(Context Relevance/Groundedness/Answer Relevance)를 RAGAS와 별개 프레임워크로 채점, `ThreadPoolExecutor(max_workers=3)`로 3개 지표 동시 호출(timeout=90초) | **Gemini**(`GEMINI_AUX_MODEL`, `trulens.providers.litellm.LiteLLM(model_engine="gemini/...")`경유) |
+
+실패 시 두 함수 모두 `0.0`이 아닌 `None`을 반환해 DB에 `NULL`로 남긴다 (측정 실패를 낮은 점수로 오인하지 않도록).
+
 **Flesch-Kincaid Grade Level 계산 (`flesch_kincaid_grade_en`):**
 
 ```python
 # 공식: 0.39*(words/sentences) + 11.8*(syllables/words) - 15.59
 # 영어 음절 수: 모음 그룹(vowel group) 개수로 근사 계산, 묵음 e 제거
-# 입력: 번역 전 영어 원문 (graph.py _output_node에서 호출)
+# 입력: 영어 원문 (graph.py _output_node에서 output_agent 호출 전에 계산)
 # 출력: Grade Level 값 (Consumer 목표 ≤9, Professional 목표 ≥12)
 ```
 
@@ -360,28 +384,23 @@ OfficialRagasScores(faithfulness, answer_relevance, context_precision, hallu_fla
 
 #### 3.4.1 LLM 클라이언트 (`core/llm_client.py`)
 
-**듀얼 LLM 백엔드 설계**: ContextVar를 이용한 스레드-안전 provider 전환
+**LLM 백엔드 설계**: ContextVar를 이용한 스레드-안전 provider 관리 (현재 OpenAI만 사용)
 
 ```
-ContextVar[llm_provider]  ← "openai" | "gemini"
+ContextVar[llm_provider]  ← "openai"
     │
-    ├─ "openai"  → ChatOpenAI(model=gpt-4o, api_key=OPENAI_API_KEY)
-    └─ "gemini"  → ChatOpenAI(
-                       model=gemini-2.5-pro,
-                       base_url=GEMINI_OPENAI_COMPAT_BASE_URL,
-                       api_key=GEMINI_API_KEY
-                   )
+    └─ "openai"  → ChatOpenAI(model=gpt-4o-mini, api_key=OPENAI_API_KEY)
 ```
 
 **모델 역할 분리:**
 
-| 역할 | OpenAI 모델 | Gemini 모델 |
-|------|-------------|-------------|
-| 사용자 분류 | gpt-4o-mini | gemini-2.5-flash |
-| 쿼리 최적화 | gpt-4o-mini | gemini-2.5-flash |
-| RAG 엔진 (답변 생성) | gpt-4o | gemini-2.5-pro |
-| 번역 | gpt-4o-mini | gemini-2.5-flash |
-| RAGAS 평가 | gpt-4o-mini | gemini-2.5-flash |
+| 역할 | 모델 | 비고 |
+|------|------|------|
+| 사용자 분류 | gpt-4o-mini | `ContextVar[llm_provider]` 토글 (OpenAI/Gemini) |
+| 쿼리 최적화 | gpt-4o-mini | 〃 |
+| RAG 엔진 (답변 생성) | gpt-4o-mini (코드 기본값은 gpt-4o) | 〃 |
+| RAGAS 평가 (F/AR/CP) | **claude-haiku-4-5-20251001** (`ANTHROPIC_MODEL`) | `ContextVar[llm_provider]`와 무관, 항상 Claude 고정 |
+| TruLens RAG Triad (성능평가 전용) | **gemini-2.5-flash** (`GEMINI_AUX_MODEL`) | `disease` 있는 STQS/ablation 요청에서만 호출 |
 
 ---
 
@@ -416,13 +435,13 @@ ContextVar[llm_provider]  ← "openai" | "gemini"
     │
     ▼
 [output (_output_node)]
-  fk = flesch_kincaid_grade_en(state["answer"])  ← 영어 원문 기준, 번역 전
-  output_agent(state) → LLM 번역 → answer: "감기의 주요 증상은..."
+  fk = flesch_kincaid_grade_en(state["answer"])  ← 영어 원문 기준, 출처·면책 추가 전
+  output_agent(state) → 출처·면책 조항 추가 → answer: "[Consumer Summary] Common cold symptoms include...\n\nSource: MSD Manual - ...\n\nThis answer is generated based on the MSD Manual..."
   save_audit_log(state, request_id, fk_grade=fk)
   → INSERT is_final=TRUE (tier_path="0", q_total=0.884, fk_grade=8.5)
     │
     ▼
-최종 답변 (한국어) + 점수 카드 표시
+최종 답변 (영문, 출처·면책 포함) + 점수 카드 표시
 ```
 
 ### 4.2 에스컬레이션 흐름 (조건 A: Tier 0 → 1 → 2)
@@ -503,8 +522,9 @@ app.py  (ablation_condition="A" 고정)
        │    │    └─ infra/vector_store.py
        │    └─ tools/web_search.py
        └─ agents/critic.py
-       │    └─ infra/evaluator.py        ← RAGAS + flesch_kincaid_grade_en
-       │         └─ core/llm_client.py (RAGAS용)
+       │    └─ infra/evaluator.py        ← RAGAS + flesch_kincaid_grade_en + IR/TruLens(성능평가 전용)
+       │         ├─ core/llm_client.py (RAGAS 판정 — Claude, AsyncAnthropic)
+       │         └─ trulens.providers.litellm (TruLens 판정 — Gemini, LiteLLM 경유)
        └─ agents/output.py
        │    └─ core/llm_client.py
        └─ infra/audit_logger.py         ← save_loop_log + save_audit_log (N+1행 INSERT)
@@ -537,12 +557,11 @@ medical_rag_graph.py  (하위 호환 re-export 모듈 — 직접 사용 지양)
 | `CRITICAL_F_THRESHOLD` | `MEDICAL_RAG_CRITICAL_F_THRESHOLD` | `0.3` | 즉시 에스컬레이션 조건 (F) |
 | `CRITICAL_CP_THRESHOLD` | `MEDICAL_RAG_CRITICAL_CP_THRESHOLD` | `0.2` | 즉시 에스컬레이션 조건 (CP) |
 | `MAX_LOOPS` | `MEDICAL_RAG_MAX_LOOPS` | `3` | Tier당 최대 재시도 횟수 |
-| `OPENAI_MODEL` | `OPENAI_MODEL` | `gpt-4o` | RAG 엔진 모델 |
-| `GEMINI_MODEL` | `GEMINI_MODEL` | `gemini-2.5-pro` | Gemini RAG 엔진 모델 |
+| `OPENAI_MODEL` | `OPENAI_MODEL` | `gpt-4o` (현재 `.env`: `gpt-4o-mini`) | RAG 엔진 모델 |
 | `EMBEDDING_MODEL` | `MEDICAL_RAG_EMBEDDING_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | 임베딩 모델 (배포: BAAI/bge-base-en-v1.5) |
-| `CHUNK_MAX_CHARS` | `MEDICAL_RAG_CHUNK_MAX_CHARS` | `500` | 청크 최대 길이 |
+| `CHUNK_MAX_CHARS` | `MEDICAL_RAG_CHUNK_MAX_CHARS` | `500` (현재 `.env`: `1000`) | 청크 최대 길이 |
 | `CHUNK_OVERLAP` | `MEDICAL_RAG_CHUNK_OVERLAP` | `60` | 청크 오버랩 크기 |
-| `RAG_TOP_K` | `MEDICAL_RAG_TOP_K` | `2` | VectorDB 검색 상위 K개 |
+| `RAG_TOP_K` | `MEDICAL_RAG_TOP_K` | `5` (현재 `.env`: `3`) | VectorDB 검색 상위 K개 |
 | `PDF_OCR_ENABLED` | `MEDICAL_RAG_PDF_OCR` | `false` | 스캔 PDF OCR 활성화 |
 
 ---
@@ -562,14 +581,14 @@ rag_nonmun/
 │   ├── rewriter.py           # 쿼리 최적화
 │   ├── rag_engine.py         # 검색 및 답변 합성 (Tier 0/1/2, FK Grade 목표 프롬프트)
 │   ├── critic.py             # RAGAS 평가 + 라우팅 판단
-│   └── output.py             # 번역 및 최종 답변 생성
+│   └── output.py             # 출처·면책 조항 추가 및 최종 답변 완성
 │
 ├── core/
-│   └── llm_client.py         # LLM 클라이언트 (OpenAI/Gemini 듀얼 지원)
+│   └── llm_client.py         # LLM 클라이언트 (OpenAI)
 │
 ├── infra/
 │   ├── vector_store.py       # FAISS 인덱스 빌드 및 관리 (BAAI/bge-base-en-v1.5)
-│   ├── evaluator.py          # RAGAS 공식 메트릭 평가 + flesch_kincaid_grade_en()
+│   ├── evaluator.py          # RAGAS(Claude 판정) + flesch_kincaid_grade_en() + IR/TruLens(Gemini 판정, 성능평가 전용)
 │   └── audit_logger.py       # Oracle DB 감사 로그 저장 (N+1행: save_loop_log + save_audit_log)
 │
 ├── tools/
@@ -664,15 +683,25 @@ def _get_graph():
     return _compiled_graph
 ```
 
-### 8.9 FK Grade 번역 전 계산
+### 8.9 FK Grade 출처·면책 조항 추가 전 계산
 
-**결정**: Flesch-Kincaid Grade Level을 `output_agent`(한국어 번역) 호출 전 영어 원문 기준으로 계산  
-**이유**: FK Grade는 영어 텍스트 기반 가독성 지표이며, 번역 후에는 영어 텍스트가 사라짐. `graph.py`의 `_output_node`에서 `flesch_kincaid_grade_en(state["answer"])`를 번역 전에 실행하고, `save_audit_log(fk_grade=fk)`로 전달함. Fallback 답변은 한국어/영어 혼합으로 FK 계산이 의미 없으므로 NULL 저장.
+**결정**: Flesch-Kincaid Grade Level을 `output_agent`(출처·면책 조항 추가) 호출 전 영어 원문 기준으로 계산  
+**이유**: FK Grade는 영어 텍스트 기반 가독성 지표이며, `output_agent`가 덧붙이는 출처·면책 문구가 섞이면 값이 왜곡됨. `graph.py`의 `_output_node`에서 `flesch_kincaid_grade_en(state["answer"])`를 `output_agent` 호출 전에 실행하고, `save_audit_log(fk_grade=fk)`로 전달함. Fallback에서 원문 청크를 그대로 제시하는 경우(best_answer 없음)는 FK 계산이 의미 없으므로 NULL 저장.
 
 ### 8.10 matplotlib 영어 텍스트 전용
 
 **결정**: 성능 시각화 대시보드의 matplotlib 차트 텍스트를 모두 영어로 작성  
 **이유**: 배포 환경(Streamlit Cloud 포함)에서 한국어 폰트가 설치되지 않아 matplotlib 차트에 깨진 문자(□□□)가 출력됨. Streamlit `st.dataframe()`은 한국어를 정상 렌더링하므로 표(DataFrame)는 한국어 허용, 차트(matplotlib)는 영어만 사용.
+
+### 8.11 RAGAS 판정 LLM을 Claude로 고정 (순환성 회피)
+
+**결정**: RAGAS 판정 LLM(`ragas_async_client()`/`ragas_model()`)을 답변 생성 LLM(OpenAI/Gemini 토글)과 무관하게 항상 Claude(`ANTHROPIC_MODEL`)로 고정  
+**이유**: Critic Agent가 런타임 Quality Gate로 RAGAS를 쓰는 동시에 같은 지표로 최종 성능평가까지 하면, "같은 모델이 최적화하고 같은 모델이 채점"하는 self-grading 순환성 편향이 학술적으로 비판받을 수 있음. 판정 LLM을 답변 생성 LLM과 별도 provider로 분리해 이를 회피.
+
+### 8.12 성능평가 전용 지표 추가 — IR Hit Rate/MRR, TruLens RAG Triad
+
+**결정**: `disease`(STQS-240/ablation 정답 라벨)가 있는 요청에서만 critic_agent가 IR Hit Rate/MRR과 TruLens RAG Triad(Gemini 판정)를 추가로 계산해 DB에 기록. Self-Correction Loop 게이트(`check_faithfulness`/`is_critically_low`)에는 관여하지 않음  
+**이유**: (1) RAGAS만으로 최종 성능평가를 하면 8.11과 동일한 순환성 문제가 남음 — TruLens라는 별도 프레임워크·별도 판정 모델(Gemini)로 F/AR/CP를 교차검증. (2) 전통적 IR 지표(Hit Rate/MRR)로 검색 성능 자체를 LLM 판정 없이 독립적으로 검증. (3) `disease`가 없는 일반 운영 쿼리는 ground truth가 없거나(IR) 교차검증 목적이 없어(TruLens) 계산을 생략해 불필요한 LLM 호출 비용을 막음.
 
 ---
 
@@ -688,8 +717,9 @@ def _get_graph():
 | 오류 유형 | 처리 방식 |
 |-----------|-----------|
 | LLM API 오류 | `max_retries=6` 자동 재시도 |
-| RAGAS 평가 실패 | 각 메트릭별 개별 try/except, 실패 시 0.0 반환 |
+| RAGAS 평가 실패 | 각 메트릭별 개별 try/except, 실패 시 0.0 반환 (게이트 판단에 쓰이므로 안전한 기본값) |
 | RAGAS 타임아웃 | `future.result(timeout=120)` 초과 시 0.0 반환 |
+| TruLens 평가 실패/타임아웃 | 지표별 개별 try/except, `future.result(timeout=90)`. 게이트에 쓰이지 않으므로 0.0이 아닌 `None` 반환 → DB NULL |
 | DB 커넥션 오류 | 커넥션 초기화 후 로그만 기록, 시스템 계속 실행 |
 | 모든 Tier 소진 | Fallback 노드로 라우팅, 원문 제시 |
 

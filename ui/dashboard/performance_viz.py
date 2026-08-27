@@ -477,7 +477,8 @@ def _compute_classifier_metrics(df):
             & df["query_level_label"].notna()
             & df["user_level"].notna()
         ]
-        .drop_duplicates(subset=["request_id"])
+        .sort_values("created_at")
+        .drop_duplicates(subset=["query_index"], keep="last")
         .copy()
     )
     if sub.empty:

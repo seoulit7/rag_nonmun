@@ -52,7 +52,7 @@ _실행 순서(한 사이클 평가 후):_
 
 ## 5. Tier 1 — LLM 학습데이터
 
-외부 검색 없이 LLM(GPT / Gemini)의 사전 학습 지식을 직접 활용한다. 1회 시도 후 **AR ≥ AR_THRESHOLD(0.8)** 이면 출력, 기준 미달이면 Tier 2로 에스컬레이션한다.
+외부 검색 없이 LLM(GPT)의 사전 학습 지식을 직접 활용한다. 1회 시도 후 **AR ≥ AR_THRESHOLD(0.8)** 이면 출력, 기준 미달이면 Tier 2로 에스컬레이션한다.
 
 > **평가 지표**: Tier 1은 AR(Answer Relevance)만 평가한다. LLM 학습데이터 기반 답변은 컨텍스트 청크가 없으므로 F·CP를 적용하지 않는다. 중간 루프 로그(save_loop_log)에도 F·CP는 NULL로 저장된다.
 
@@ -74,7 +74,18 @@ LLM 기반 RAGAS 평가기로 3가지 지표를 산출한다.
 
 > **AR 첫 쿼리 고정**: AR(Answer Relevance)은 재시도·에스컬레이션으로 쿼리가 바뀌어도 **항상 첫 번째 쿼리(`queries[0]`)를 기준**으로 평가한다. 쿼리를 변경할수록 원래 질문 의도와 멀어져 AR 기준이 흔들리는 문제를 방지하기 위한 설계다.
 
+> **판정 LLM 분리**: RAGAS 판정 LLM은 **Claude(Haiku 4.5, `ANTHROPIC_MODEL`)로 고정**되어 있으며, 답변 생성에 쓰이는 LLM(OpenAI/Gemini 토글)과 완전히 무관하다. 같은 모델이 답변을 만들고 채점까지 겸하면 생기는 순환성(circularity) 편향을 피하기 위한 설계다.
+
 **루프 로그 저장**: 매 critic 평가 완료 후 `save_loop_log()`를 호출하여 Oracle DB에 중간 행(`is_final=FALSE`)을 INSERT한다. 최종 output/fallback 후 `save_audit_log()`로 최종 행(`is_final=TRUE`)을 추가로 INSERT한다. 따라서 request_id당 **N+1행**이 저장된다 (N=critic 평가 횟수).
+
+**성능평가 전용 지표 (Self-Correction Loop 게이트와 무관)**: `disease`(STQS-240/ablation 정답 라벨)가 있는 요청에 한해, critic_agent가 RAGAS와 별도로 아래 지표를 계산해 DB에만 기록한다(루프 종료/에스컬레이션 판단에는 사용하지 않음).
+
+| 지표 | 방식 | 목적 |
+|------|------|------|
+| IR Hit Rate / MRR | `context_sources`(검색 청크 출처 파일명)에 `disease`명이 포함되는지 문자열 매칭 (LLM 불필요) | 검색 성능을 전통적 IR 지표로 독립 검증 |
+| TruLens RAG Triad (Context Relevance / Groundedness / Answer Relevance) | RAGAS와 별개 프레임워크, **Gemini**(`GEMINI_AUX_MODEL`)로 판정 | RAGAS 단독 평가의 순환성 비판을 피하기 위한 F/AR/CP 교차검증 |
+
+`disease`가 없는 일반 운영 쿼리는 ground truth가 없거나 교차검증 목적이 없어 계산 자체를 생략하며, DB에는 `NULL`로 저장된다.
 
 ### 7.1 조건별 라우팅 (_critic_node)
 
@@ -97,18 +108,17 @@ LLM 기반 RAGAS 평가기로 3가지 지표를 산출한다.
 
 ## 8. output_agent Agent — 최종 출력
 
-**FK Grade 계산 → 한국어 번역 → 출처·면책 조항 추가 → 감사 로그 저장** 순서로 실행된다.
+**FK Grade 계산 → 출처·면책 조항 추가 → 감사 로그 저장** 순서로 실행된다.
 
-1. **FK Grade 계산**: `output_agent` 호출 *전* 영어 원문 답변(`state["answer"]`)에 대해 `flesch_kincaid_grade_en()`을 실행하여 Flesch-Kincaid Grade Level을 계산한다. 번역 후에는 영어 텍스트가 사라지므로 반드시 번역 전에 계산한다.
-2. **한국어 번역**: LLM이 답변 본문을 한국어로 번역한다 (원문이 영·중·일 등일 수 있음).
-3. **출처·면책 조항 추가**: 검색 출처(MSD 매뉴얼 파일·페이지 / LLM / 웹 URL)와 면책 조항을 추가한다.
-4. **감사 로그 저장**: `save_audit_log(fk_grade=fk)`를 호출하여 Oracle DB에 최종 행(`is_final=TRUE`)을 INSERT한다. `fk_grade`는 번역 전 영어 원문 기준 값이다.
+1. **FK Grade 계산**: `output_agent` 호출 *전* 영어 원문 답변(`state["answer"]`)에 대해 `flesch_kincaid_grade_en()`을 실행하여 Flesch-Kincaid Grade Level을 계산한다. `output_agent`가 출처·면책 조항을 덧붙이면 순수 영어 답변 텍스트가 아니게 되므로 반드시 그 전에 계산한다.
+2. **출처·면책 조항 추가**: 검색 출처(MSD 매뉴얼 파일·페이지 / LLM / 웹 URL)와 면책 조항을 추가한다. 번역은 수행하지 않으며 영어 원문을 그대로 사용한다.
+3. **감사 로그 저장**: `save_audit_log(fk_grade=fk)`를 호출하여 Oracle DB에 최종 행(`is_final=TRUE`)을 INSERT한다. `fk_grade`는 출처·면책 조항 추가 전 영어 원문 기준 값이다.
 
 ## 9. fallback — 원문 제시
 
 모든 Tier를 소진했을 때 두 단계로 처리한다.
 
-1. **best_answer 우선 사용**: 루프 전체에서 Q_total(`0.4·F + 0.4·AR + 0.2·CP`)이 가장 높은 답변(`best_answer`)이 존재하면 해당 답변을 사용한다. FK Grade를 계산한 후 `output_agent`로 한국어 번역까지 수행한다.
+1. **best_answer 우선 사용**: 루프 전체에서 Q_total(`0.4·F + 0.4·AR + 0.2·CP`)이 가장 높은 답변(`best_answer`)이 존재하면 해당 답변을 사용한다. FK Grade를 계산한 후 `output_agent`로 출처·면책 조항까지 추가한다.
 2. **원문 제시 (최후 수단)**: `best_answer`가 없으면 검색된 원문 청크를 그대로 제시하고 `fk_grade=None`으로 저장한다.
 
-완료 후 `save_audit_log(..., is_fallback=True)`를 호출한다. 혼합 언어 답변(원문 제시)은 FK Grade를 계산하지 않으므로 `fk_grade=None`으로 저장한다.
+완료 후 `save_audit_log(..., is_fallback=True)`를 호출한다. `best_answer`가 없어 원문 청크를 그대로 제시하는 경우는 FK Grade를 계산하지 않으므로 `fk_grade=None`으로 저장한다.

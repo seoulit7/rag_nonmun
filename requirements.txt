@@ -12,7 +12,10 @@ langchain-text-splitters>=0.3.0,<1.0.0
 langchain-huggingface>=0.0.3,<1.0.0
 
 # LLM API 및 검색
-openai>=1.0,<2
+# openai: litellm(TruLens RAG Triad 경유)이 2.x를 요구해 <2 상한을 해제함.
+# instructor(ragas의 Anthropic 어댑터 의존성)는 메타데이터상 <2.0.0을 요구해
+# pip가 경고를 띄우지만, 실제로는 openai 2.x에서도 정상 동작 확인됨.
+openai>=1.68
 duckduckgo-search>=6.0
 tenacity>=8.0,<9
 
@@ -24,6 +27,13 @@ scikit-learn>=1.3,<2
 huggingface-hub>=0.20.0,<1.0.0
 tiktoken>=0.7.0,<1.0.0
 pypdf>=4.0,<5
+
+# 평가 지표 — RAGAS 판정 LLM(Claude) · TruLens RAG Triad(Gemini, LiteLLM 경유)
+# 답변 생성 LLM(OpenAI/Gemini)과 판정 LLM을 분리해 순환성(circularity) 편향을 피하기 위함
+anthropic>=0.60,<1.0.0
+litellm>=1.98,<2
+trulens-core>=2.13,<3
+trulens-providers-litellm>=2.13,<3
 
 # PDF 처리 및 OCR
 pymupdf>=1.23,<2          # fitz — PDF 텍스트 추출 및 페이지 렌더링
